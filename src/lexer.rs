@@ -59,6 +59,12 @@ pub mod lexer {
                         '0'..='9' | '.' => {
                             let number = self.read_number();
                             tokens.push(Token::Number(number));
+                            // if a letter immediately follows a number, insert a * automatically
+                            if let Some(character) = self.current() {
+                                if character.is_alphabetic() {
+                                    tokens.push(Token::Asterisk);
+                                }
+                            }
                         }
 
                         'a'..='z' | 'A'..='Z' => {
