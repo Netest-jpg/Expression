@@ -6,9 +6,7 @@ fn main() {
 
     let mut expression = String::new();
 
-    std::io::stdin()
-        .read_line(&mut expression)
-        .unwrap();
+    std::io::stdin().read_line(&mut expression).unwrap();
 
     let expression = expression.trim();
 

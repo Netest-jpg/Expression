@@ -20,7 +20,6 @@ pub mod lexer {
     }
 
     impl Tokenizer {
-
         pub fn new(input: &str) -> Tokenizer {
             Tokenizer {
                 input: input.chars().collect(),
@@ -47,42 +46,59 @@ pub mod lexer {
 
             loop {
                 match self.current() {
-
                     None => {
                         tokens.push(Token::EndOfFile);
                         break;
                     }
 
-                    Some(character) => {
-                        match character {
-
-                            ' ' | '\t' => {
-                                self.advance();
-                            }
-
-                            '0'..='9' | '.' => {
-                                let number = self.read_number();
-                                tokens.push(Token::Number(number));
-                            }
-
-                            'a'..='z' | 'A'..='Z' => {
-                                let name = self.read_identifier();
-                                tokens.push(Token::Identifier(name));
-                            }
-
-                            '+' => { self.advance(); tokens.push(Token::Plus);             }
-                            '-' => { self.advance(); tokens.push(Token::Minus);            }
-                            '*' => { self.advance(); tokens.push(Token::Asterisk);         }
-                            '/' => { self.advance(); tokens.push(Token::ForwardSlash);     }
-                            '^' => { self.advance(); tokens.push(Token::Caret);            }
-                            '(' => { self.advance(); tokens.push(Token::LeftParenthesis);  }
-                            ')' => { self.advance(); tokens.push(Token::RightParenthesis); }
-
-                            other => {
-                                panic!("Unknown character: '{}'", other);
-                            }
+                    Some(character) => match character {
+                        ' ' | '\t' => {
+                            self.advance();
                         }
-                    }
+
+                        '0'..='9' | '.' => {
+                            let number = self.read_number();
+                            tokens.push(Token::Number(number));
+                        }
+
+                        'a'..='z' | 'A'..='Z' => {
+                            let name = self.read_identifier();
+                            tokens.push(Token::Identifier(name));
+                        }
+
+                        '+' => {
+                            self.advance();
+                            tokens.push(Token::Plus);
+                        }
+                        '-' => {
+                            self.advance();
+                            tokens.push(Token::Minus);
+                        }
+                        '*' => {
+                            self.advance();
+                            tokens.push(Token::Asterisk);
+                        }
+                        '/' => {
+                            self.advance();
+                            tokens.push(Token::ForwardSlash);
+                        }
+                        '^' => {
+                            self.advance();
+                            tokens.push(Token::Caret);
+                        }
+                        '(' => {
+                            self.advance();
+                            tokens.push(Token::LeftParenthesis);
+                        }
+                        ')' => {
+                            self.advance();
+                            tokens.push(Token::RightParenthesis);
+                        }
+
+                        other => {
+                            panic!("Unknown character: '{}'", other);
+                        }
+                    },
                 }
             }
 
@@ -102,15 +118,18 @@ pub mod lexer {
                     accumulated_text.push(character);
                     self.advance();
                 } else if character == '.' && dot_seen {
-                    panic!("Invalid number: unexpected second '.' in '{}'", accumulated_text);
+                    panic!(
+                        "Invalid number: unexpected second '.' in '{}'",
+                        accumulated_text
+                    );
                 } else {
                     break;
                 }
             }
 
-            accumulated_text.parse().unwrap_or_else(|_| {
-                panic!("Invalid number: '{}'", accumulated_text)
-            })
+            accumulated_text
+                .parse()
+                .unwrap_or_else(|_| panic!("Invalid number: '{}'", accumulated_text))
         }
 
         fn read_identifier(&mut self) -> String {
