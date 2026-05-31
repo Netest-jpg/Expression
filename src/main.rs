@@ -1,5 +1,5 @@
 mod lexer;
-use lexer::lexer::Tokenizer;
+use lexer::Tokenizer;
 
 fn main() {
     println!("Enter a math expression:");

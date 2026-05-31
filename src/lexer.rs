@@ -1,156 +1,424 @@
-pub mod lexer {
 
-    #[derive(Debug, Clone, PartialEq)]
-    pub enum Token {
-        Number(f64),
-        Identifier(String),
-        Plus,
-        Minus,
-        Asterisk,
-        ForwardSlash,
-        Caret,
-        LeftParenthesis,
-        RightParenthesis,
-        EndOfFile,
+#![allow(dead_code)] // public API items used by downstream consumers
+
+// -----------------------------------------------------------------------
+// FNV-1a constants (same as xnacly's C lexer)
+// -----------------------------------------------------------------------
+const FNV_OFFSET_BASIS: u64 = 14695981039346656037;
+const FNV_PRIME: u64 = 1099511628211;
+
+#[inline(always)]
+fn fnv1a_update(hash: u64, byte: u8) -> u64 {
+    (hash ^ byte as u64).wrapping_mul(FNV_PRIME)
+}
+
+// -----------------------------------------------------------------------
+// O(1) character-class lookup table
+// Replaces chained range comparisons; built entirely at compile time.
+// -----------------------------------------------------------------------
+const fn build_ident_table() -> [bool; 256] {
+    let mut t = [false; 256];
+    let mut c = b'a';
+    while c <= b'z' {
+        t[c as usize] = true;
+        c += 1;
+    }
+    let mut c = b'A';
+    while c <= b'Z' {
+        t[c as usize] = true;
+        c += 1;
+    }
+    let mut c = b'0';
+    while c <= b'9' {
+        t[c as usize] = true;
+        c += 1;
+    }
+    t[b'_' as usize] = true;
+    t
+}
+static IS_IDENT: [bool; 256] = build_ident_table();
+
+#[inline(always)]
+fn is_ident_char(c: u8) -> bool {
+    unsafe { *IS_IDENT.get_unchecked(c as usize) }
+}
+
+// -----------------------------------------------------------------------
+// Dispatch table — maps every leading byte to a handler kind.
+// Equivalent to xnacly's jump_table[256]; one array index instead of
+// a chain of match arms.
+// -----------------------------------------------------------------------
+#[repr(u8)]
+#[derive(Clone, Copy)]
+enum Dispatch {
+    Whitespace,
+    Digit,
+    Alpha,
+    Plus,
+    Minus,
+    Star,
+    Slash,
+    Caret,
+    LParen,
+    RParen,
+    Unknown,
+}
+
+const fn build_dispatch_table() -> [Dispatch; 256] {
+    let mut t = [Dispatch::Unknown; 256];
+    t[b' ' as usize] = Dispatch::Whitespace;
+    t[b'\t' as usize] = Dispatch::Whitespace;
+    t[b'\n' as usize] = Dispatch::Whitespace;
+    t[b'\r' as usize] = Dispatch::Whitespace;
+    let mut c = b'0';
+    while c <= b'9' {
+        t[c as usize] = Dispatch::Digit;
+        c += 1;
+    }
+    t[b'.' as usize] = Dispatch::Digit;
+    let mut c = b'a';
+    while c <= b'z' {
+        t[c as usize] = Dispatch::Alpha;
+        c += 1;
+    }
+    let mut c = b'A';
+    while c <= b'Z' {
+        t[c as usize] = Dispatch::Alpha;
+        c += 1;
+    }
+    t[b'_' as usize] = Dispatch::Alpha;
+    t[b'+' as usize] = Dispatch::Plus;
+    t[b'-' as usize] = Dispatch::Minus;
+    t[b'*' as usize] = Dispatch::Star;
+    t[b'/' as usize] = Dispatch::Slash;
+    t[b'^' as usize] = Dispatch::Caret;
+    t[b'(' as usize] = Dispatch::LParen;
+    t[b')' as usize] = Dispatch::RParen;
+    t
+}
+static DISPATCH: [Dispatch; 256] = build_dispatch_table();
+
+// -----------------------------------------------------------------------
+// Token
+//
+// Number and Identifier are zero-copy slices into the original source,
+// each carrying a pre-computed FNV-1a hash for O(1) comparisons.
+// The f64 parse is deferred to the caller (on-demand parsing).
+// -----------------------------------------------------------------------
+#[derive(Clone, PartialEq)]
+pub enum Token<'src> {
+    /// Borrowed source slice + FNV hash. Call `.as_f64()` when needed.
+    Number {
+        raw: &'src str,
+        hash: u64,
+    },
+    /// Borrowed source slice + FNV hash for O(1) keyword checks.
+    Identifier {
+        name: &'src str,
+        hash: u64,
+    },
+    Plus,
+    Minus,
+    Asterisk,
+    ForwardSlash,
+    Caret,
+    LeftParenthesis,
+    RightParenthesis,
+    EndOfFile,
+}
+
+/// Human-friendly Debug: hides the internal FNV hash.
+impl<'src> std::fmt::Debug for Token<'src> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Token::Number { raw, .. } => write!(f, "Number({raw})"),
+            Token::Identifier { name, .. } => write!(f, "Identifier({name})"),
+            Token::Plus => write!(f, "Plus"),
+            Token::Minus => write!(f, "Minus"),
+            Token::Asterisk => write!(f, "Asterisk"),
+            Token::ForwardSlash => write!(f, "ForwardSlash"),
+            Token::Caret => write!(f, "Caret"),
+            Token::LeftParenthesis => write!(f, "LeftParenthesis"),
+            Token::RightParenthesis => write!(f, "RightParenthesis"),
+            Token::EndOfFile => write!(f, "EndOfFile"),
+        }
+    }
+}
+
+impl<'src> Token<'src> {
+    /// Parse the numeric value on demand. Panics on malformed input
+    /// (the lexer already validated the character set).
+    pub fn as_f64(&self) -> f64 {
+        match self {
+            Token::Number { raw, .. } => raw.parse().expect("invalid number"),
+            _ => panic!("Token::as_f64 called on non-Number token"),
+        }
     }
 
-    pub struct Tokenizer {
-        input: Vec<char>,
-        position: usize,
+    /// Returns the identifier name, or None if this is a different token.
+    pub fn as_ident(&self) -> Option<&'src str> {
+        match self {
+            Token::Identifier { name, .. } => Some(name),
+            _ => None,
+        }
+    }
+}
+
+// -----------------------------------------------------------------------
+// Pre-computed keyword hashes.
+// Build once; compare with `token.hash == kw.sin` instead of a string cmp.
+// -----------------------------------------------------------------------
+fn keyword_hash(s: &str) -> u64 {
+    s.bytes().fold(FNV_OFFSET_BASIS, |h, b| fnv1a_update(h, b))
+}
+
+pub struct KeywordHashes {
+    pub sin: u64,
+    pub cos: u64,
+    pub tan: u64,
+    pub ln: u64,
+    pub log: u64,
+    pub sqrt: u64,
+    pub pi: u64,
+    pub e: u64,
+}
+
+impl KeywordHashes {
+    pub fn new() -> Self {
+        KeywordHashes {
+            sin: keyword_hash("sin"),
+            cos: keyword_hash("cos"),
+            tan: keyword_hash("tan"),
+            ln: keyword_hash("ln"),
+            log: keyword_hash("log"),
+            sqrt: keyword_hash("sqrt"),
+            pi: keyword_hash("pi"),
+            e: keyword_hash("e"),
+        }
+    }
+}
+
+// -----------------------------------------------------------------------
+// Tokenizer
+// -----------------------------------------------------------------------
+pub struct Tokenizer<'src> {
+    src: &'src [u8],
+    pos: usize,
+}
+
+impl<'src> Tokenizer<'src> {
+    pub fn new(input: &'src str) -> Self {
+        Tokenizer {
+            src: input.as_bytes(),
+            pos: 0,
+        }
     }
 
-    impl Tokenizer {
-        pub fn new(input: &str) -> Tokenizer {
-            Tokenizer {
-                input: input.chars().collect(),
-                position: 0,
-            }
-        }
+    #[inline(always)]
+    fn current(&self) -> Option<u8> {
+        self.src.get(self.pos).copied()
+    }
 
-        fn current(&self) -> Option<char> {
-            if self.position < self.input.len() {
-                Some(self.input[self.position])
-            } else {
-                None
-            }
-        }
+    #[inline(always)]
+    fn advance(&mut self) {
+        self.pos += 1;
+    }
 
-        fn advance(&mut self) -> char {
-            let character = self.input[self.position];
-            self.position += 1;
-            character
-        }
+    /// Tokenize the entire input.
+    pub fn tokenize(&mut self) -> Vec<Token<'src>> {
+        let mut tokens = Vec::with_capacity(self.src.len() / 4);
 
-        pub fn tokenize(&mut self) -> Vec<Token> {
-            let mut tokens = Vec::new();
+        loop {
+            let byte = match self.current() {
+                None => {
+                    tokens.push(Token::EndOfFile);
+                    break;
+                }
+                Some(b) => b,
+            };
 
-            loop {
-                match self.current() {
-                    None => {
-                        tokens.push(Token::EndOfFile);
-                        break;
+            match unsafe { *DISPATCH.get_unchecked(byte as usize) } {
+                Dispatch::Whitespace => {
+                    self.advance();
+                }
+
+                Dispatch::Digit => {
+                    let tok = self.read_number();
+                    tokens.push(tok);
+                    // implicit multiply: "2x" → Number Asterisk Identifier
+                    if self.current().map_or(false, |b| IS_IDENT[b as usize]) {
+                        tokens.push(Token::Asterisk);
                     }
+                }
 
-                    Some(character) => match character {
-                        ' ' | '\t' => {
-                            self.advance();
-                        }
+                Dispatch::Alpha => {
+                    tokens.push(self.read_identifier());
+                }
 
-                        '0'..='9' | '.' => {
-                            let number = self.read_number();
-                            tokens.push(Token::Number(number));
-                            // if a letter immediately follows a number, insert a * automatically
-                            if let Some(character) = self.current() {
-                                if character.is_alphabetic() {
-                                    tokens.push(Token::Asterisk);
-                                }
-                            }
-                        }
+                Dispatch::Plus => {
+                    self.advance();
+                    tokens.push(Token::Plus);
+                }
+                Dispatch::Minus => {
+                    self.advance();
+                    tokens.push(Token::Minus);
+                }
+                Dispatch::Star => {
+                    self.advance();
+                    tokens.push(Token::Asterisk);
+                }
+                Dispatch::Slash => {
+                    self.advance();
+                    tokens.push(Token::ForwardSlash);
+                }
+                Dispatch::Caret => {
+                    self.advance();
+                    tokens.push(Token::Caret);
+                }
+                Dispatch::LParen => {
+                    self.advance();
+                    tokens.push(Token::LeftParenthesis);
+                }
+                Dispatch::RParen => {
+                    self.advance();
+                    tokens.push(Token::RightParenthesis);
+                }
 
-                        'a'..='z' | 'A'..='Z' => {
-                            let name = self.read_identifier();
-                            tokens.push(Token::Identifier(name));
-                        }
-
-                        '+' => {
-                            self.advance();
-                            tokens.push(Token::Plus);
-                        }
-                        '-' => {
-                            self.advance();
-                            tokens.push(Token::Minus);
-                        }
-                        '*' => {
-                            self.advance();
-                            tokens.push(Token::Asterisk);
-                        }
-                        '/' => {
-                            self.advance();
-                            tokens.push(Token::ForwardSlash);
-                        }
-                        '^' => {
-                            self.advance();
-                            tokens.push(Token::Caret);
-                        }
-                        '(' => {
-                            self.advance();
-                            tokens.push(Token::LeftParenthesis);
-                        }
-                        ')' => {
-                            self.advance();
-                            tokens.push(Token::RightParenthesis);
-                        }
-
-                        other => {
-                            panic!("Unknown character: '{}'", other);
-                        }
-                    },
+                Dispatch::Unknown => {
+                    panic!("Unknown character: '{}'", byte as char);
                 }
             }
-
-            tokens
         }
 
-        fn read_number(&mut self) -> f64 {
-            let mut accumulated_text = String::new();
-            let mut dot_seen = false;
+        tokens
+    }
 
-            while let Some(character) = self.current() {
-                if character.is_ascii_digit() {
-                    accumulated_text.push(character);
-                    self.advance();
-                } else if character == '.' && !dot_seen {
-                    dot_seen = true;
-                    accumulated_text.push(character);
-                    self.advance();
-                } else if character == '.' && dot_seen {
-                    panic!(
-                        "Invalid number: unexpected second '.' in '{}'",
-                        accumulated_text
-                    );
-                } else {
-                    break;
-                }
+    /// Scan a numeric literal, hashing bytes inline (zero extra pass).
+    fn read_number(&mut self) -> Token<'src> {
+        let start = self.pos;
+        let mut hash = FNV_OFFSET_BASIS;
+        let mut dot_seen = false;
+
+        while let Some(b) = self.current() {
+            if b.is_ascii_digit() {
+                hash = fnv1a_update(hash, b);
+                self.advance();
+            } else if b == b'.' && !dot_seen {
+                dot_seen = true;
+                hash = fnv1a_update(hash, b);
+                self.advance();
+            } else if b == b'.' {
+                let so_far = std::str::from_utf8(&self.src[start..self.pos]).unwrap();
+                panic!("Invalid number: unexpected second '.' in '{}'", so_far);
+            } else {
+                break;
             }
-
-            accumulated_text
-                .parse()
-                .unwrap_or_else(|_| panic!("Invalid number: '{}'", accumulated_text))
         }
 
-        fn read_identifier(&mut self) -> String {
-            let mut accumulated_text = String::new();
+        let raw =
+            std::str::from_utf8(&self.src[start..self.pos]).expect("number slice is valid UTF-8");
+        Token::Number { raw, hash }
+    }
 
-            while let Some(character) = self.current() {
-                if character.is_ascii_alphanumeric() {
-                    accumulated_text.push(character);
-                    self.advance();
-                } else {
-                    break;
-                }
+    /// Scan an identifier, hashing bytes inline.
+    fn read_identifier(&mut self) -> Token<'src> {
+        let start = self.pos;
+        let mut hash = FNV_OFFSET_BASIS;
+
+        while let Some(b) = self.current() {
+            if is_ident_char(b) {
+                hash = fnv1a_update(hash, b);
+                self.advance();
+            } else {
+                break;
             }
-
-            accumulated_text
         }
+
+        let name = std::str::from_utf8(&self.src[start..self.pos])
+            .expect("identifier slice is valid UTF-8");
+        Token::Identifier { name, hash }
+    }
+}
+
+// -----------------------------------------------------------------------
+// Tests
+// -----------------------------------------------------------------------
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tok(s: &str) -> Vec<Token<'_>> {
+        Tokenizer::new(s).tokenize()
+    }
+
+    #[test]
+    fn test_basic_operators() {
+        let tokens = tok("+ - * / ^ ( )");
+        assert!(matches!(tokens[0], Token::Plus));
+        assert!(matches!(tokens[1], Token::Minus));
+        assert!(matches!(tokens[2], Token::Asterisk));
+        assert!(matches!(tokens[3], Token::ForwardSlash));
+        assert!(matches!(tokens[4], Token::Caret));
+        assert!(matches!(tokens[5], Token::LeftParenthesis));
+        assert!(matches!(tokens[6], Token::RightParenthesis));
+    }
+
+    #[test]
+    fn test_number_lazy_parse() {
+        let tokens = tok("3.14");
+        match tokens[0] {
+            Token::Number { raw, .. } => {
+                assert_eq!(raw, "3.14");
+                assert!((tokens[0].as_f64() - 3.14).abs() < 1e-10);
+            }
+            _ => panic!("expected Number"),
+        }
+    }
+
+    #[test]
+    fn test_identifier_hash_stability() {
+        let t1 = tok("foo");
+        let t2 = tok("foo");
+        match (&t1[0], &t2[0]) {
+            (Token::Identifier { hash: h1, .. }, Token::Identifier { hash: h2, .. }) => {
+                assert_eq!(h1, h2);
+            }
+            _ => panic!("expected Identifiers"),
+        }
+    }
+
+    #[test]
+    fn test_implicit_multiply() {
+        let tokens = tok("2x");
+        assert!(matches!(tokens[0], Token::Number { .. }));
+        assert!(matches!(tokens[1], Token::Asterisk));
+        assert!(matches!(tokens[2], Token::Identifier { .. }));
+    }
+
+    #[test]
+    fn test_keyword_hash_lookup() {
+        let kw = KeywordHashes::new();
+        let tokens = tok("sin");
+        match tokens[0] {
+            Token::Identifier { hash, .. } => assert_eq!(hash, kw.sin),
+            _ => panic!("expected Identifier"),
+        }
+    }
+
+    #[test]
+    fn test_whitespace_skipped() {
+        let tokens = tok("  \t1\n+\t2  ");
+        // Number(1), Plus, Number(2), EndOfFile
+        assert_eq!(tokens.len(), 4);
+    }
+
+    #[test]
+    fn test_debug_no_hash() {
+        let tokens = tok("3x+3");
+        // Confirm the hash is hidden in Debug output
+        let s = format!("{:?}", tokens[0]);
+        assert_eq!(s, "Number(3)");
+        let s = format!("{:?}", tokens[2]);
+        assert_eq!(s, "Identifier(x)");
     }
 }
