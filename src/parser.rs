@@ -1,28 +1,6 @@
 #![allow(dead_code)] // public API items used by downstream consumers
 
-use crate::lexer::Token;
-
-const FNV_OFFSET_BASIS: u64 = 14695981039346656037;
-const FNV_PRIME: u64 = 1099511628211;
-
-const fn keyword_hash(bytes: &[u8]) -> u64 {
-    let mut hash = FNV_OFFSET_BASIS;
-    let mut i = 0;
-    while i < bytes.len() {
-        hash = (hash ^ bytes[i] as u64).wrapping_mul(FNV_PRIME);
-        i += 1;
-    }
-    hash
-}
-
-const KW_SIN: u64 = keyword_hash(b"sin");
-const KW_COS: u64 = keyword_hash(b"cos");
-const KW_TAN: u64 = keyword_hash(b"tan");
-const KW_LN: u64 = keyword_hash(b"ln");
-const KW_LOG: u64 = keyword_hash(b"log");
-const KW_SQRT: u64 = keyword_hash(b"sqrt");
-const KW_PI: u64 = keyword_hash(b"pi");
-const KW_E: u64 = keyword_hash(b"e");
+use crate::lexer::{KW_COS, KW_E, KW_LN, KW_LOG, KW_PI, KW_SIN, KW_SQRT, KW_TAN, Token};
 
 #[inline(always)]
 fn parse_number(raw: &str) -> f64 {

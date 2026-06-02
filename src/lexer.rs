@@ -6,6 +6,16 @@
 const FNV_OFFSET_BASIS: u64 = 14695981039346656037;
 const FNV_PRIME: u64 = 1099511628211;
 
+const fn keyword_hash(bytes: &[u8]) -> u64 {
+    let mut hash = FNV_OFFSET_BASIS;
+    let mut i = 0;
+    while i < bytes.len() {
+        hash = (hash ^ bytes[i] as u64).wrapping_mul(FNV_PRIME);
+        i += 1;
+    }
+    hash
+}
+
 #[inline(always)]
 fn fnv1a_update(hash: u64, byte: u8) -> u64 {
     (hash ^ byte as u64).wrapping_mul(FNV_PRIME)
@@ -165,37 +175,16 @@ impl<'src> Token<'src> {
 
 // -----------------------------------------------------------------------
 // Pre-computed keyword hashes.
-// Build once; compare with `token.hash == kw.sin` instead of a string cmp.
+// Compare with `token.hash == KW_SIN` instead of a string cmp.
 // -----------------------------------------------------------------------
-fn keyword_hash(s: &str) -> u64 {
-    s.bytes().fold(FNV_OFFSET_BASIS, |h, b| fnv1a_update(h, b))
-}
-
-pub struct KeywordHashes {
-    pub sin: u64,
-    pub cos: u64,
-    pub tan: u64,
-    pub ln: u64,
-    pub log: u64,
-    pub sqrt: u64,
-    pub pi: u64,
-    pub e: u64,
-}
-
-impl KeywordHashes {
-    pub fn new() -> Self {
-        KeywordHashes {
-            sin: keyword_hash("sin"),
-            cos: keyword_hash("cos"),
-            tan: keyword_hash("tan"),
-            ln: keyword_hash("ln"),
-            log: keyword_hash("log"),
-            sqrt: keyword_hash("sqrt"),
-            pi: keyword_hash("pi"),
-            e: keyword_hash("e"),
-        }
-    }
-}
+pub const KW_SIN: u64 = keyword_hash(b"sin");
+pub const KW_COS: u64 = keyword_hash(b"cos");
+pub const KW_TAN: u64 = keyword_hash(b"tan");
+pub const KW_LN: u64 = keyword_hash(b"ln");
+pub const KW_LOG: u64 = keyword_hash(b"log");
+pub const KW_SQRT: u64 = keyword_hash(b"sqrt");
+pub const KW_PI: u64 = keyword_hash(b"pi");
+pub const KW_E: u64 = keyword_hash(b"e");
 
 // -----------------------------------------------------------------------
 // Tokenizer
@@ -408,10 +397,9 @@ mod tests {
 
     #[test]
     fn test_keyword_hash_lookup() {
-        let kw = KeywordHashes::new();
         let tokens = tok("sin");
         match tokens[0] {
-            Token::Identifier { hash, .. } => assert_eq!(hash, kw.sin),
+            Token::Identifier { hash, .. } => assert_eq!(hash, KW_SIN),
             _ => panic!("expected Identifier"),
         }
     }
