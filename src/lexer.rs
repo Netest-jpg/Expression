@@ -1,4 +1,3 @@
-
 #![allow(dead_code)] // public API items used by downstream consumers
 
 // -----------------------------------------------------------------------
@@ -226,7 +225,7 @@ impl<'src> Tokenizer<'src> {
 
     /// Tokenize the entire input.
     pub fn tokenize(&mut self) -> Vec<Token<'src>> {
-        let mut tokens = Vec::with_capacity(self.src.len() / 4);
+        let mut tokens = Vec::with_capacity(self.src.len() + 1);
 
         loop {
             let byte = match self.current() {
@@ -298,9 +297,11 @@ impl<'src> Tokenizer<'src> {
         let start = self.pos;
         let mut hash = FNV_OFFSET_BASIS;
         let mut dot_seen = false;
+        let mut digit_seen = false;
 
         while let Some(b) = self.current() {
             if b.is_ascii_digit() {
+                digit_seen = true;
                 hash = fnv1a_update(hash, b);
                 self.advance();
             } else if b == b'.' && !dot_seen {
@@ -313,6 +314,10 @@ impl<'src> Tokenizer<'src> {
             } else {
                 break;
             }
+        }
+
+        if !digit_seen {
+            panic!("Invalid number: expected at least one digit");
         }
 
         let raw =
@@ -373,6 +378,12 @@ mod tests {
             }
             _ => panic!("expected Number"),
         }
+    }
+
+    #[test]
+    #[should_panic(expected = "Invalid number: expected at least one digit")]
+    fn test_bare_dot_is_not_number() {
+        let _ = tok(".");
     }
 
     #[test]
