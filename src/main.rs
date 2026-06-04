@@ -4,6 +4,8 @@ mod parser;
 use lexer::{Token, Tokenizer};
 use parser::{Node, NodeKind, Parser};
 
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
 // -----------------------------------------------------------------------
 // Display helpers
 // -----------------------------------------------------------------------
@@ -127,6 +129,7 @@ fn format_arena(root: u32, arena: &[Node<'_>], verbose: bool) -> String {
 // -----------------------------------------------------------------------
 
 fn main() {
+    let _profiler = dhat::Profiler::new_heap();
     let verbose = std::env::args().any(|a| a == "--debug");
 
     if verbose {
@@ -136,6 +139,7 @@ fn main() {
     println!("[ use 'quit' / 'exit' / ':q' to exit the program ]");
     println!();
 
+    let mut line = String::with_capacity(64);
     loop {
         // Prompt
         print!("~ ");
@@ -144,7 +148,6 @@ fn main() {
             std::io::stdout().flush().ok();
         }
 
-        let mut line = String::with_capacity(64);
         let threshold_capacity = 512;
         if line.capacity() > threshold_capacity {
             line.shrink_to(128);
