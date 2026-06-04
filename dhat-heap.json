@@ -8,63 +8,32 @@
 "Mtu": "s",
 "tuth": 10,
 "cmd": "target/release/expression",
-"pid": 24236,
-"tg": 37991543,
-"te": 37991553,
+"pid": 31114,
+"tg": 707946,
+"te": 707949,
 "pps": [
 {
-"tb": 5300000,
-"tbk": 100000,
-"tl": 587179,
-"mb": 53,
+"tb": 912,
+"tbk": 1,
+"tl": 707802,
+"mb": 912,
 "mbk": 1,
-"gb": 0,
-"gbk": 0,
+"gb": 912,
+"gbk": 1,
 "eb": 0,
 "ebk": 0,
 "fs": [
 1,
 2,
-3
-]
-},
-{
-"tb": 1300000,
-"tbk": 1300000,
-"tl": 108027829,
-"mb": 13,
-"mbk": 13,
-"gb": 0,
-"gbk": 0,
-"eb": 0,
-"ebk": 0,
-"fs": [
-1,
+3,
 4,
-5,
-6
-]
-},
-{
-"tb": 144000000,
-"tbk": 400000,
-"tl": 5270744,
-"mb": 768,
-"mbk": 1,
-"gb": 0,
-"gbk": 0,
-"eb": 0,
-"ebk": 0,
-"fs": [
-1,
-7,
-6
+5
 ]
 },
 {
 "tb": 8192,
 "tbk": 1,
-"tl": 37991433,
+"tl": 707834,
 "mb": 8192,
 "mbk": 1,
 "gb": 8192,
@@ -73,36 +42,52 @@
 "ebk": 1,
 "fs": [
 1,
+6,
+7,
 8,
 9,
-10,
-11,
-12
+10
 ]
 },
 {
-"tb": 2000000,
-"tbk": 200000,
-"tl": 1166640,
-"mb": 10,
+"tb": 64,
+"tbk": 1,
+"tl": 707826,
+"mb": 64,
 "mbk": 1,
-"gb": 0,
-"gbk": 0,
+"gb": 64,
+"gbk": 1,
+"eb": 64,
+"ebk": 1,
+"fs": [
+1,
+11,
+12,
+13
+]
+},
+{
+"tb": 8192,
+"tbk": 1,
+"tl": 707854,
+"mb": 8192,
+"mbk": 1,
+"gb": 8192,
+"gbk": 1,
 "eb": 0,
 "ebk": 0,
 "fs": [
 1,
-13,
 14
 ]
 },
 {
-"tb": 6400064,
-"tbk": 100001,
-"tl": 37458308,
-"mb": 64,
+"tb": 57600000,
+"tbk": 100000,
+"tl": 88173,
+"mb": 576,
 "mbk": 1,
-"gb": 64,
+"gb": 576,
 "gbk": 1,
 "eb": 0,
 "ebk": 0,
@@ -112,104 +97,9 @@
 ]
 },
 {
-"tb": 200000,
-"tbk": 200000,
-"tl": 1143289,
-"mb": 1,
-"mbk": 1,
-"gb": 0,
-"gbk": 0,
-"eb": 0,
-"ebk": 0,
-"fs": [
-1,
-16
-]
-},
-{
-"tb": 1200000,
-"tbk": 100000,
-"tl": 580786,
-"mb": 12,
-"mbk": 1,
-"gb": 0,
-"gbk": 0,
-"eb": 0,
-"ebk": 0,
-"fs": [
-1,
-13,
-17
-]
-},
-{
-"tb": 2000000,
-"tbk": 200000,
-"tl": 1171071,
-"mb": 10,
-"mbk": 1,
-"gb": 10,
-"gbk": 1,
-"eb": 0,
-"ebk": 0,
-"fs": [
-1,
-13,
-18
-]
-},
-{
-"tb": 1400000,
-"tbk": 100000,
-"tl": 579691,
-"mb": 14,
-"mbk": 1,
-"gb": 0,
-"gbk": 0,
-"eb": 0,
-"ebk": 0,
-"fs": [
-1,
-13,
-19
-]
-},
-{
-"tb": 39600000,
-"tbk": 2400000,
-"tl": 200017,
-"mb": 24,
-"mbk": 1,
-"gb": 24,
-"gbk": 1,
-"eb": 0,
-"ebk": 0,
-"fs": [
-1,
-13,
-20
-]
-},
-{
-"tb": 121600000,
-"tbk": 100000,
-"tl": 36609992,
-"mb": 1216,
-"mbk": 1,
-"gb": 1216,
-"gbk": 1,
-"eb": 0,
-"ebk": 0,
-"fs": [
-1,
-21,
-22
-]
-},
-{
 "tb": 24,
 "tbk": 1,
-"tl": 28,
+"tl": 16,
 "mb": 24,
 "mbk": 1,
 "gb": 0,
@@ -218,14 +108,14 @@
 "ebk": 0,
 "fs": [
 1,
-23,
-24
+16,
+17
 ]
 },
 {
 "tb": 64,
 "tbk": 1,
-"tl": 37991454,
+"tl": 707860,
 "mb": 64,
 "mbk": 1,
 "gb": 64,
@@ -234,169 +124,15 @@
 "ebk": 1,
 "fs": [
 1,
-25,
-26,
-27,
-28,
-29
-]
-},
-{
-"tb": 300000,
-"tbk": 100000,
-"tl": 16445884,
-"mb": 3,
-"mbk": 1,
-"gb": 0,
-"gbk": 0,
-"eb": 0,
-"ebk": 0,
-"fs": [
-1,
-30,
-31,
-6
-]
-},
-{
-"tb": 1000000,
-"tbk": 100000,
-"tl": 582949,
-"mb": 10,
-"mbk": 1,
-"gb": 0,
-"gbk": 0,
-"eb": 0,
-"ebk": 0,
-"fs": [
-1,
-13,
-32
-]
-},
-{
-"tb": 1500000,
-"tbk": 900000,
-"tl": 73052699,
-"mb": 15,
-"mbk": 9,
-"gb": 0,
-"gbk": 0,
-"eb": 0,
-"ebk": 0,
-"fs": [
-1,
-30,
-5,
-6
-]
-},
-{
-"tb": 57600000,
-"tbk": 100000,
-"tl": 18883055,
-"mb": 576,
-"mbk": 1,
-"gb": 576,
-"gbk": 1,
-"eb": 0,
-"ebk": 0,
-"fs": [
-1,
-33
-]
-},
-{
-"tb": 100000,
-"tbk": 100000,
-"tl": 575249,
-"mb": 1,
-"mbk": 1,
-"gb": 0,
-"gbk": 0,
-"eb": 0,
-"ebk": 0,
-"fs": [
-1,
-34
-]
-},
-{
-"tb": 1024,
-"tbk": 1,
-"tl": 37991474,
-"mb": 1024,
-"mbk": 1,
-"gb": 1024,
-"gbk": 1,
-"eb": 1024,
-"ebk": 1,
-"fs": [
-1,
-35,
-9,
-36,
-37,
-29
-]
-},
-{
-"tb": 1000000,
-"tbk": 100000,
-"tl": 588836,
-"mb": 10,
-"mbk": 1,
-"gb": 0,
-"gbk": 0,
-"eb": 0,
-"ebk": 0,
-"fs": [
-1,
-13,
-38
-]
-},
-{
-"tb": 2400000,
-"tbk": 300000,
-"tl": 1724683,
-"mb": 8,
-"mbk": 1,
-"gb": 0,
-"gbk": 0,
-"eb": 0,
-"ebk": 0,
-"fs": [
-1,
-39,
-40,
-41,
-42,
-43,
-44,
-45
-]
-},
-{
-"tb": 7700000,
-"tbk": 200000,
-"tl": 19691973,
-"mb": 61,
-"mbk": 1,
-"gb": 61,
-"gbk": 1,
-"eb": 0,
-"ebk": 0,
-"fs": [
-1,
-13,
-46
+11,
+18,
+19
 ]
 },
 {
 "tb": 25,
 "tbk": 1,
-"tl": 21,
+"tl": 10,
 "mb": 25,
 "mbk": 1,
 "gb": 0,
@@ -405,112 +141,71 @@
 "ebk": 0,
 "fs": [
 1,
-47,
+20,
+17
+]
+},
+{
+"tb": 1024,
+"tbk": 1,
+"tl": 707878,
+"mb": 1024,
+"mbk": 1,
+"gb": 1024,
+"gbk": 1,
+"eb": 1024,
+"ebk": 1,
+"fs": [
+1,
+21,
+7,
+22,
+23,
 24
 ]
 },
 {
 "tb": 64,
 "tbk": 1,
-"tl": 37991414,
+"tl": 707848,
 "mb": 64,
 "mbk": 1,
 "gb": 64,
 "gbk": 1,
-"eb": 64,
-"ebk": 1,
-"fs": [
-1,
-25,
-48,
-49
-]
-},
-{
-"tb": 66000000,
-"tbk": 400000,
-"tl": 1383701,
-"mb": 352,
-"mbk": 1,
-"gb": 352,
-"gbk": 1,
 "eb": 0,
 "ebk": 0,
 "fs": [
 1,
-13,
-50
-]
-},
-{
-"tb": 1200000,
-"tbk": 100000,
-"tl": 585811,
-"mb": 12,
-"mbk": 1,
-"gb": 0,
-"gbk": 0,
-"eb": 0,
-"ebk": 0,
-"fs": [
-1,
-13,
-51
+25
 ]
 }
 ],
 "ftbl": [
 "[root]",
-"0x102f7f1a8: <dhat::Alloc as core::alloc::global::GlobalAlloc>::alloc (???:0:0)",
-"0x102f7b920: alloc::str::join_generic_copy (???:0:0)",
-"0x102f78cdc: expression::main (???:0:0)",
-"0x102f7a104: core::ops::function::impls::<impl core::ops::function::FnMut<A> for &mut F>::call_mut (???:0:0)",
-"0x102f7abc4: <alloc::vec::Vec<T> as alloc::vec::spec_from_iter_nested::SpecFromIterNested<T,I>>::from_iter (???:0:0)",
-"0x102f78cbc: expression::main (???:0:0)",
-"0x102f7ab6c: <alloc::vec::Vec<T> as alloc::vec::spec_from_iter_nested::SpecFromIterNested<T,I>>::from_iter (???:0:0)",
-"0x102fbde20: <std::sync::once::Once>::call_once_force::<<std::sync::once_lock::OnceLock<std::sync::poison::mutex::Mutex<std::io::buffered::bufreader::BufReader<std::io::stdio::StdinRaw>>>>::initialize<<std::sync::once_lock::OnceLock<std::sync::poison::mutex::Mutex<std::io::buffered::bufreader::BufReader<std::io::stdio::StdinRaw>>>>::get_or_init<std::io::stdio::stdin::{closure#0}>::{closure#0}, !>::{closure#0}>::{closure#0} (???:0:0)",
-"0x102fee130: <std::sys::sync::once::queue::Once>::call (???:0:0)",
-"0x102fedb18: <std::sync::once_lock::OnceLock<std::sync::poison::mutex::Mutex<std::io::buffered::bufreader::BufReader<std::io::stdio::StdinRaw>>>>::initialize::<<std::sync::once_lock::OnceLock<std::sync::poison::mutex::Mutex<std::io::buffered::bufreader::BufReader<std::io::stdio::StdinRaw>>>>::get_or_init<std::io::stdio::stdin::{closure#0}>::{closure#0}, !> (???:0:0)",
-"0x102fcbf58: std::io::stdio::stdin (???:0:0)",
-"0x102f78c10: expression::main (???:0:0)",
-"0x102fdd29c: alloc::fmt::format::format_inner (???:0:0)",
-"0x102f79398: expression::main (???:0:0)",
-"0x102f78bfc: expression::main (???:0:0)",
-"0x102f7913c: expression::main (???:0:0)",
-"0x102f79354: expression::main (???:0:0)",
-"0x102f790ac: expression::main (???:0:0)",
-"0x102f79034: expression::main (???:0:0)",
-"0x102f79484: expression::main (???:0:0)",
-"0x102f7b2a8: expression::lexer::Tokenizer::tokenize (???:0:0)",
-"0x102f78c98: expression::main (???:0:0)",
-"0x102fcb2c0: std::env::args_os (???:0:0)",
-"0x102f7898c: expression::main (???:0:0)",
-"0x102fedb70: <std::sys::sync::once_box::OnceBox<std::sys::pal::unix::sync::mutex::Mutex>>::initialize::<<std::sys::sync::mutex::pthread::Mutex>::get::{closure#0}> (???:0:0)",
-"0x102fc4f44: <std::io::stdio::Stderr>::lock (???:0:0)",
-"0x102fd2ba0: <&std::io::stdio::Stdout as std::io::Write>::write_fmt (???:0:0)",
-"0x102fcbfcc: std::io::stdio::_print (???:0:0)",
-"0x102f78b3c: expression::main (???:0:0)",
-"0x102f7a154: core::ops::function::impls::<impl core::ops::function::FnMut<A> for &mut F>::call_mut (???:0:0)",
-"0x102f7ab40: <alloc::vec::Vec<T> as alloc::vec::spec_from_iter_nested::SpecFromIterNested<T,I>>::from_iter (???:0:0)",
-"0x102f79320: expression::main (???:0:0)",
-"0x102f78eac: expression::main (???:0:0)",
-"0x102f793ec: expression::main (???:0:0)",
-"0x102fbdd50: <std::sync::once::Once>::call_once_force::<<std::sync::once_lock::OnceLock<std::sync::reentrant_lock::ReentrantLock<core::cell::RefCell<std::io::buffered::linewriter::LineWriter<std::io::stdio::StdoutRaw>>>>>::initialize<<std::sync::once_lock::OnceLock<std::sync::reentrant_lock::ReentrantLock<core::cell::RefCell<std::io::buffered::linewriter::LineWriter<std::io::stdio::StdoutRaw>>>>>::get_or_init<std::io::stdio::stdout::{closure#0}>::{closure#0}, !>::{closure#0}>::{closure#0} (???:0:0)",
-"0x102feda5c: <std::sync::once_lock::OnceLock<std::sync::reentrant_lock::ReentrantLock<core::cell::RefCell<std::io::buffered::linewriter::LineWriter<std::io::stdio::StdoutRaw>>>>>::initialize::<<std::sync::once_lock::OnceLock<std::sync::reentrant_lock::ReentrantLock<core::cell::RefCell<std::io::buffered::linewriter::LineWriter<std::io::stdio::StdoutRaw>>>>>::get_or_init<std::io::stdio::stdout::{closure#0}>::{closure#0}, !> (???:0:0)",
-"0x102fcbfe4: std::io::stdio::_print (???:0:0)",
-"0x102f790e0: expression::main (???:0:0)",
-"0x102feee04: <alloc::raw_vec::RawVecInner>::finish_grow (???:0:0)",
-"0x102feed78: <alloc::raw_vec::RawVecInner<_>>::reserve::do_reserve_and_handle::<alloc::alloc::Global> (???:0:0)",
-"0x102fdd600: <alloc::string::String as core::fmt::Write>::write_str (???:0:0)",
-"0x102fe6ef4: <isize as core::fmt::Display>::fmt (???:0:0)",
-"0x102fe0e24: core::fmt::write (???:0:0)",
-"0x102fdd2c8: alloc::fmt::format::format_inner (???:0:0)",
-"0x102f79000: expression::main (???:0:0)",
-"0x102f78d14: expression::main (???:0:0)",
-"0x102fcb328: std::env::args_os (???:0:0)",
-"0x102fc18a4: <std::io::stdio::Stdin>::read_line (???:0:0)",
-"0x102f78c20: expression::main (???:0:0)",
-"0x102f78f54: expression::main (???:0:0)",
-"0x102f79114: expression::main (???:0:0)"
+"0x104bfff1c: <dhat::Alloc as core::alloc::global::GlobalAlloc>::alloc (???:0:0)",
+"0x104c682b8: alloc::raw_vec::RawVecInner<A>::finish_grow (???:0:0)",
+"0x104c68334: alloc::raw_vec::RawVecInner<A>::reserve::do_reserve_and_handle (???:0:0)",
+"0x104bfc890: expression::lexer::Tokenizer::tokenize (???:0:0)",
+"0x104bf8d84: expression::main (???:0:0)",
+"0x104c3eb94: <std::sync::once::Once>::call_once_force::<<std::sync::once_lock::OnceLock<std::sync::poison::mutex::Mutex<std::io::buffered::bufreader::BufReader<std::io::stdio::StdinRaw>>>>::initialize<<std::sync::once_lock::OnceLock<std::sync::poison::mutex::Mutex<std::io::buffered::bufreader::BufReader<std::io::stdio::StdinRaw>>>>::get_or_init<std::io::stdio::stdin::{closure#0}>::{closure#0}, !>::{closure#0}>::{closure#0} (???:0:0)",
+"0x104c6ed60: <std::sys::sync::once::queue::Once>::call (???:0:0)",
+"0x104c6e748: <std::sync::once_lock::OnceLock<std::sync::poison::mutex::Mutex<std::io::buffered::bufreader::BufReader<std::io::stdio::StdinRaw>>>>::initialize::<<std::sync::once_lock::OnceLock<std::sync::poison::mutex::Mutex<std::io::buffered::bufreader::BufReader<std::io::stdio::StdinRaw>>>>::get_or_init<std::io::stdio::stdin::{closure#0}>::{closure#0}, !> (???:0:0)",
+"0x104c4cccc: std::io::stdio::stdin (???:0:0)",
+"0x104bf8cf4: expression::main (???:0:0)",
+"0x104c6e7a0: <std::sys::sync::once_box::OnceBox<std::sys::pal::unix::sync::mutex::Mutex>>::initialize::<<std::sys::sync::mutex::pthread::Mutex>::get::{closure#0}> (???:0:0)",
+"0x104c42618: <std::io::stdio::Stdin>::read_line (???:0:0)",
+"0x104bf8d04: expression::main (???:0:0)",
+"0x104bf8abc: expression::main (???:0:0)",
+"0x104bf921c: expression::main (???:0:0)",
+"0x104c4c034: std::env::args_os (???:0:0)",
+"0x104bf8988: expression::main (???:0:0)",
+"0x104c45cb8: <std::io::stdio::Stderr>::lock (???:0:0)",
+"0x104bf8aa0: expression::main (???:0:0)",
+"0x104c4c09c: std::env::args_os (???:0:0)",
+"0x104c3eac4: <std::sync::once::Once>::call_once_force::<<std::sync::once_lock::OnceLock<std::sync::reentrant_lock::ReentrantLock<core::cell::RefCell<std::io::buffered::linewriter::LineWriter<std::io::stdio::StdoutRaw>>>>>::initialize<<std::sync::once_lock::OnceLock<std::sync::reentrant_lock::ReentrantLock<core::cell::RefCell<std::io::buffered::linewriter::LineWriter<std::io::stdio::StdoutRaw>>>>>::get_or_init<std::io::stdio::stdout::{closure#0}>::{closure#0}, !>::{closure#0}>::{closure#0} (???:0:0)",
+"0x104c6e68c: <std::sync::once_lock::OnceLock<std::sync::reentrant_lock::ReentrantLock<core::cell::RefCell<std::io::buffered::linewriter::LineWriter<std::io::stdio::StdoutRaw>>>>>::initialize::<<std::sync::once_lock::OnceLock<std::sync::reentrant_lock::ReentrantLock<core::cell::RefCell<std::io::buffered::linewriter::LineWriter<std::io::stdio::StdoutRaw>>>>>::get_or_init<std::io::stdio::stdout::{closure#0}>::{closure#0}, !> (???:0:0)",
+"0x104c4cd04: std::io::stdio::stdout (???:0:0)",
+"0x104bf8a94: expression::main (???:0:0)",
+"0x104bf8bc4: expression::main (???:0:0)"
 ]
 }

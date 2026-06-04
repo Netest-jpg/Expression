@@ -23,25 +23,15 @@ fn fnv1a_update(hash: u64, byte: u8) -> u64 {
 
 // -----------------------------------------------------------------------
 // O(1) character-class lookup table
-// Replaces chained range comparisons; built entirely at compile time.
 // -----------------------------------------------------------------------
 const fn build_ident_table() -> [bool; 256] {
     let mut t = [false; 256];
     let mut c = b'a';
-    while c <= b'z' {
-        t[c as usize] = true;
-        c += 1;
-    }
+    while c <= b'z' { t[c as usize] = true; c += 1; }
     let mut c = b'A';
-    while c <= b'Z' {
-        t[c as usize] = true;
-        c += 1;
-    }
+    while c <= b'Z' { t[c as usize] = true; c += 1; }
     let mut c = b'0';
-    while c <= b'9' {
-        t[c as usize] = true;
-        c += 1;
-    }
+    while c <= b'9' { t[c as usize] = true; c += 1; }
     t[b'_' as usize] = true;
     t
 }
@@ -53,9 +43,7 @@ fn is_ident_char(c: u8) -> bool {
 }
 
 // -----------------------------------------------------------------------
-// Dispatch table — maps every leading byte to a handler kind.
-// Equivalent to xnacly's jump_table[256]; one array index instead of
-// a chain of match arms.
+// Dispatch table
 // -----------------------------------------------------------------------
 #[repr(u8)]
 #[derive(Clone, Copy)]
@@ -80,21 +68,12 @@ const fn build_dispatch_table() -> [Dispatch; 256] {
     t[b'\n' as usize] = Dispatch::Whitespace;
     t[b'\r' as usize] = Dispatch::Whitespace;
     let mut c = b'0';
-    while c <= b'9' {
-        t[c as usize] = Dispatch::Digit;
-        c += 1;
-    }
+    while c <= b'9' { t[c as usize] = Dispatch::Digit; c += 1; }
     t[b'.' as usize] = Dispatch::Digit;
     let mut c = b'a';
-    while c <= b'z' {
-        t[c as usize] = Dispatch::Alpha;
-        c += 1;
-    }
+    while c <= b'z' { t[c as usize] = Dispatch::Alpha; c += 1; }
     let mut c = b'A';
-    while c <= b'Z' {
-        t[c as usize] = Dispatch::Alpha;
-        c += 1;
-    }
+    while c <= b'Z' { t[c as usize] = Dispatch::Alpha; c += 1; }
     t[b'_' as usize] = Dispatch::Alpha;
     t[b'+' as usize] = Dispatch::Plus;
     t[b'-' as usize] = Dispatch::Minus;
@@ -110,20 +89,25 @@ static DISPATCH: [Dispatch; 256] = build_dispatch_table();
 // -----------------------------------------------------------------------
 // Token
 //
-// Number and Identifier are zero-copy slices into the original source,
-// each carrying a pre-computed FNV-1a hash for O(1) comparisons.
-// The f64 parse is deferred to the caller (on-demand parsing).
+// Number and Identifier store byte offsets (u32) into the source string
+// rather than borrowed slices. This makes Token<'static> (no lifetime
+// parameter), so the tokens Vec can be declared outside the REPL loop and
+// reuse its heap allocation across iterations.
+//
+// Call `.raw(src)` / `.name(src)` to recover the string slice when needed.
 // -----------------------------------------------------------------------
 #[derive(Clone, PartialEq)]
-pub enum Token<'src> {
-    /// Borrowed source slice + FNV hash. Call `.as_f64()` when needed.
+pub enum Token {
+    /// Byte range in the source + FNV hash. Call `.raw(src)` when needed.
     Number {
-        raw: &'src str,
+        start: u32,
+        end: u32,
         hash: u64,
     },
-    /// Borrowed source slice + FNV hash for O(1) keyword checks.
+    /// Byte range in the source + FNV hash for O(1) keyword checks.
     Identifier {
-        name: &'src str,
+        start: u32,
+        end: u32,
         hash: u64,
     },
     Plus,
@@ -136,12 +120,45 @@ pub enum Token<'src> {
     EndOfFile,
 }
 
-/// Human-friendly Debug: hides the internal FNV hash.
-impl<'src> std::fmt::Debug for Token<'src> {
+impl Token {
+    /// Resolve the raw number text from the original source.
+    #[inline(always)]
+    pub fn raw<'src>(&self, src: &'src str) -> &'src str {
+        match self {
+            Token::Number { start, end, .. } => &src[*start as usize..*end as usize],
+            _ => panic!("Token::raw called on non-Number token"),
+        }
+    }
+
+    /// Resolve the identifier name from the original source.
+    #[inline(always)]
+    pub fn name<'src>(&self, src: &'src str) -> &'src str {
+        match self {
+            Token::Identifier { start, end, .. } => &src[*start as usize..*end as usize],
+            _ => panic!("Token::name called on non-Identifier token"),
+        }
+    }
+
+    /// Parse the numeric value on demand.
+    pub fn as_f64(&self, src: &str) -> f64 {
+        self.raw(src).parse().expect("invalid number")
+    }
+
+    /// Returns the identifier name, or None.
+    pub fn as_ident<'src>(&self, src: &'src str) -> Option<&'src str> {
+        match self {
+            Token::Identifier { start, end, .. } => Some(&src[*start as usize..*end as usize]),
+            _ => None,
+        }
+    }
+}
+
+/// Human-friendly Debug: resolves nothing (no src available), shows offsets.
+impl std::fmt::Debug for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Token::Number { raw, .. } => write!(f, "Number({raw})"),
-            Token::Identifier { name, .. } => write!(f, "Identifier({name})"),
+            Token::Number { start, end, .. } => write!(f, "Number([{start}..{end}])"),
+            Token::Identifier { start, end, .. } => write!(f, "Identifier([{start}..{end}])"),
             Token::Plus => write!(f, "Plus"),
             Token::Minus => write!(f, "Minus"),
             Token::Asterisk => write!(f, "Asterisk"),
@@ -154,28 +171,8 @@ impl<'src> std::fmt::Debug for Token<'src> {
     }
 }
 
-impl<'src> Token<'src> {
-    /// Parse the numeric value on demand. Panics on malformed input
-    /// (the lexer already validated the character set).
-    pub fn as_f64(&self) -> f64 {
-        match self {
-            Token::Number { raw, .. } => raw.parse().expect("invalid number"),
-            _ => panic!("Token::as_f64 called on non-Number token"),
-        }
-    }
-
-    /// Returns the identifier name, or None if this is a different token.
-    pub fn as_ident(&self) -> Option<&'src str> {
-        match self {
-            Token::Identifier { name, .. } => Some(name),
-            _ => None,
-        }
-    }
-}
-
 // -----------------------------------------------------------------------
 // Pre-computed keyword hashes.
-// Compare with `token.hash == KW_SIN` instead of a string cmp.
 // -----------------------------------------------------------------------
 pub const KW_SIN: u64 = keyword_hash(b"sin");
 pub const KW_COS: u64 = keyword_hash(b"cos");
@@ -196,10 +193,7 @@ pub struct Tokenizer<'src> {
 
 impl<'src> Tokenizer<'src> {
     pub fn new(input: &'src str) -> Self {
-        Tokenizer {
-            src: input.as_bytes(),
-            pos: 0,
-        }
+        Tokenizer { src: input.as_bytes(), pos: 0 }
     }
 
     #[inline(always)]
@@ -212,78 +206,47 @@ impl<'src> Tokenizer<'src> {
         self.pos += 1;
     }
 
-    /// Tokenize the entire input.
-    pub fn tokenize(&mut self) -> Vec<Token<'src>> {
-        let mut tokens = Vec::with_capacity(self.src.len() + 1);
-
+    /// Tokenize the entire input into `tokens` (cleared first).
+    pub fn tokenize(&mut self, tokens: &mut Vec<Token>) -> Result<(), String> {
+        tokens.clear();
+        tokens.reserve(self.src.len() + 1);
         loop {
             let byte = match self.current() {
-                None => {
-                    tokens.push(Token::EndOfFile);
-                    break;
-                }
+                None => { tokens.push(Token::EndOfFile); break; }
                 Some(b) => b,
             };
 
             match unsafe { *DISPATCH.get_unchecked(byte as usize) } {
-                Dispatch::Whitespace => {
-                    self.advance();
-                }
+                Dispatch::Whitespace => { self.advance(); }
 
                 Dispatch::Digit => {
-                    let tok = self.read_number();
-                    tokens.push(tok);
+                    let tok = self.read_number()?;
                     // implicit multiply: "2x" → Number Asterisk Identifier
-                    if self.current().map_or(false, |b| IS_IDENT[b as usize]) {
-                        tokens.push(Token::Asterisk);
-                    }
+                    let implicit = self.current().map_or(false, |b| IS_IDENT[b as usize]);
+                    tokens.push(tok);
+                    if implicit { tokens.push(Token::Asterisk); }
                 }
 
-                Dispatch::Alpha => {
-                    tokens.push(self.read_identifier());
-                }
+                Dispatch::Alpha => { tokens.push(self.read_identifier()); }
 
-                Dispatch::Plus => {
-                    self.advance();
-                    tokens.push(Token::Plus);
-                }
-                Dispatch::Minus => {
-                    self.advance();
-                    tokens.push(Token::Minus);
-                }
-                Dispatch::Star => {
-                    self.advance();
-                    tokens.push(Token::Asterisk);
-                }
-                Dispatch::Slash => {
-                    self.advance();
-                    tokens.push(Token::ForwardSlash);
-                }
-                Dispatch::Caret => {
-                    self.advance();
-                    tokens.push(Token::Caret);
-                }
-                Dispatch::LParen => {
-                    self.advance();
-                    tokens.push(Token::LeftParenthesis);
-                }
-                Dispatch::RParen => {
-                    self.advance();
-                    tokens.push(Token::RightParenthesis);
-                }
+                Dispatch::Plus  => { self.advance(); tokens.push(Token::Plus); }
+                Dispatch::Minus => { self.advance(); tokens.push(Token::Minus); }
+                Dispatch::Star  => { self.advance(); tokens.push(Token::Asterisk); }
+                Dispatch::Slash => { self.advance(); tokens.push(Token::ForwardSlash); }
+                Dispatch::Caret => { self.advance(); tokens.push(Token::Caret); }
+                Dispatch::LParen => { self.advance(); tokens.push(Token::LeftParenthesis); }
+                Dispatch::RParen => { self.advance(); tokens.push(Token::RightParenthesis); }
 
                 Dispatch::Unknown => {
-                    panic!("Unknown character: '{}'", byte as char);
+                    return Err(format!("Unknown character: '{}'", byte as char));
                 }
             }
         }
-
-        tokens
+        Ok(())
     }
 
-    /// Scan a numeric literal, hashing bytes inline (zero extra pass).
-    fn read_number(&mut self) -> Token<'src> {
-        let start = self.pos;
+    fn read_number(&mut self) -> Result<Token, String> {
+        let start = self.pos as u32;
         let mut hash = FNV_OFFSET_BASIS;
         let mut dot_seen = false;
         let mut digit_seen = false;
@@ -298,25 +261,22 @@ impl<'src> Tokenizer<'src> {
                 hash = fnv1a_update(hash, b);
                 self.advance();
             } else if b == b'.' {
-                let so_far = std::str::from_utf8(&self.src[start..self.pos]).unwrap();
-                panic!("Invalid number: unexpected second '.' in '{}'", so_far);
+                let so_far = std::str::from_utf8(&self.src[start as usize..self.pos]).unwrap();
+                return Err(format!("Invalid number: unexpected second '.' in '{}'", so_far));
             } else {
                 break;
             }
         }
 
         if !digit_seen {
-            panic!("Invalid number: expected at least one digit");
+            return Err("Invalid number: expected at least one digit".to_string());
         }
 
-        let raw =
-            std::str::from_utf8(&self.src[start..self.pos]).expect("number slice is valid UTF-8");
-        Token::Number { raw, hash }
+        Ok(Token::Number { start, end: self.pos as u32, hash })
     }
 
-    /// Scan an identifier, hashing bytes inline.
-    fn read_identifier(&mut self) -> Token<'src> {
-        let start = self.pos;
+    fn read_identifier(&mut self) -> Token {
+        let start = self.pos as u32;
         let mut hash = FNV_OFFSET_BASIS;
 
         while let Some(b) = self.current() {
@@ -328,9 +288,7 @@ impl<'src> Tokenizer<'src> {
             }
         }
 
-        let name = std::str::from_utf8(&self.src[start..self.pos])
-            .expect("identifier slice is valid UTF-8");
-        Token::Identifier { name, hash }
+        Token::Identifier { start, end: self.pos as u32, hash }
     }
 }
 
@@ -341,13 +299,15 @@ impl<'src> Tokenizer<'src> {
 mod tests {
     use super::*;
 
-    fn tok(s: &str) -> Vec<Token<'_>> {
-        Tokenizer::new(s).tokenize()
+    fn tok(s: &str) -> (Vec<Token>, String) {
+        let mut tokens = Vec::new();
+        Tokenizer::new(s).tokenize(&mut tokens).unwrap();
+        (tokens, s.to_string())
     }
 
     #[test]
     fn test_basic_operators() {
-        let tokens = tok("+ - * / ^ ( )");
+        let (tokens, _) = tok("+ - * / ^ ( )");
         assert!(matches!(tokens[0], Token::Plus));
         assert!(matches!(tokens[1], Token::Minus));
         assert!(matches!(tokens[2], Token::Asterisk));
@@ -359,26 +319,29 @@ mod tests {
 
     #[test]
     fn test_number_lazy_parse() {
-        let tokens = tok("3.14");
+        let src = "3.14";
+        let (tokens, _) = tok(src);
         match tokens[0] {
-            Token::Number { raw, .. } => {
-                assert_eq!(raw, "3.14");
-                assert!((tokens[0].as_f64() - 3.14).abs() < 1e-10);
+            Token::Number { start, end, .. } => {
+                assert_eq!(&src[start as usize..end as usize], "3.14");
+                assert!((tokens[0].as_f64(src) - 3.14).abs() < 1e-10);
             }
             _ => panic!("expected Number"),
         }
     }
 
     #[test]
-    #[should_panic(expected = "Invalid number: expected at least one digit")]
     fn test_bare_dot_is_not_number() {
-        let _ = tok(".");
+        let mut tokens = Vec::new();
+        let result = Tokenizer::new(".").tokenize(&mut tokens);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("expected at least one digit"));
     }
 
     #[test]
     fn test_identifier_hash_stability() {
-        let t1 = tok("foo");
-        let t2 = tok("foo");
+        let (t1, _) = tok("foo");
+        let (t2, _) = tok("foo");
         match (&t1[0], &t2[0]) {
             (Token::Identifier { hash: h1, .. }, Token::Identifier { hash: h2, .. }) => {
                 assert_eq!(h1, h2);
@@ -389,7 +352,7 @@ mod tests {
 
     #[test]
     fn test_implicit_multiply() {
-        let tokens = tok("2x");
+        let (tokens, _) = tok("2x");
         assert!(matches!(tokens[0], Token::Number { .. }));
         assert!(matches!(tokens[1], Token::Asterisk));
         assert!(matches!(tokens[2], Token::Identifier { .. }));
@@ -397,7 +360,7 @@ mod tests {
 
     #[test]
     fn test_keyword_hash_lookup() {
-        let tokens = tok("sin");
+        let (tokens, _) = tok("sin");
         match tokens[0] {
             Token::Identifier { hash, .. } => assert_eq!(hash, KW_SIN),
             _ => panic!("expected Identifier"),
@@ -406,18 +369,18 @@ mod tests {
 
     #[test]
     fn test_whitespace_skipped() {
-        let tokens = tok("  \t1\n+\t2  ");
+        let (tokens, _) = tok("  \t1\n+\t2  ");
         // Number(1), Plus, Number(2), EndOfFile
         assert_eq!(tokens.len(), 4);
     }
 
     #[test]
     fn test_debug_no_hash() {
-        let tokens = tok("3x+3");
-        // Confirm the hash is hidden in Debug output
+        let (tokens, _) = tok("3x+3");
+        // Debug shows offsets, not hash
         let s = format!("{:?}", tokens[0]);
-        assert_eq!(s, "Number(3)");
+        assert!(s.starts_with("Number("));
         let s = format!("{:?}", tokens[2]);
-        assert_eq!(s, "Identifier(x)");
+        assert!(s.starts_with("Identifier("));
     }
 }

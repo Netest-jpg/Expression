@@ -1,127 +1,142 @@
 mod lexer;
 mod parser;
 
+use std::io::{BufWriter, Write};
+
 use lexer::{Token, Tokenizer};
 use parser::{Node, NodeKind, Parser};
 
-#[global_allocator]
-static ALLOC: dhat::Alloc = dhat::Alloc;
+//#[global_allocator]
+//static ALLOC: dhat::Alloc = dhat::Alloc;
+
 // -----------------------------------------------------------------------
-// Display helpers
+// Display helpers — write directly to a BufWriter, no intermediate String.
 // -----------------------------------------------------------------------
 
-/// Compact single-character display for operator tokens.
-fn token_display(tok: &Token<'_>) -> Option<&'static str> {
-    Some(match tok {
-        Token::Plus => "+",
-        Token::Minus => "-",
-        Token::Asterisk => "*",
-        Token::ForwardSlash => "/",
-        Token::Caret => "^",
-        Token::LeftParenthesis => "(",
-        Token::RightParenthesis => ")",
-        Token::EndOfFile => return None,
-        _ => return None, // Number/Identifier handled below
-    })
-}
-
-/// Build the compact display string for one token (None = skip).
-fn token_compact(tok: &Token<'_>) -> Option<String> {
-    match tok {
-        Token::Number { raw, .. } => Some(raw.to_string()),
-        Token::Identifier { name, .. } => Some(name.to_string()),
-        Token::EndOfFile => None,
-        other => token_display(other).map(|s| s.to_string()),
-    }
-}
-
-/// Format the token list as a String.
+/// Write the token list.
 /// Compact: single horizontal line, no EndOfFile.
-/// Verbose (--debug): one token per line with Debug repr.
-fn format_tokens(tokens: &[Token<'_>], verbose: bool) -> String {
-    if verbose {
-        let mut out = String::from("Tokens:");
-        for tok in tokens {
-            if !matches!(tok, Token::EndOfFile) {
-                out.push_str(&format!("\n  {:?}", tok));
+/// Verbose (--debug): one token per line with kind + resolved text.
+fn write_tokens<W: Write>(
+    out: &mut W,
+    tokens: &[Token],
+    src: &str,
+    verbose: bool,
+) -> std::io::Result<()> {
+    write!(out, "Tokens:")?;
+    for tok in tokens {
+        match tok {
+            Token::EndOfFile => {}
+            Token::Number { start, end, .. } => {
+                if verbose {
+                    write!(out, "\n  Number({})", &src[*start as usize..*end as usize])?;
+                } else {
+                    write!(out, " {}", &src[*start as usize..*end as usize])?;
+                }
+            }
+            Token::Identifier { start, end, .. } => {
+                if verbose {
+                    write!(out, "\n  Identifier({})", &src[*start as usize..*end as usize])?;
+                } else {
+                    write!(out, " {}", &src[*start as usize..*end as usize])?;
+                }
+            }
+            other => {
+                let s = match other {
+                    Token::Plus             => "+",
+                    Token::Minus            => "-",
+                    Token::Asterisk         => "*",
+                    Token::ForwardSlash     => "/",
+                    Token::Caret            => "^",
+                    Token::LeftParenthesis  => "(",
+                    Token::RightParenthesis => ")",
+                    _                       => unreachable!(),
+                };
+                if verbose {
+                    write!(out, "\n  {s}")?;
+                } else {
+                    write!(out, " {s}")?;
+                }
             }
         }
-        out
-    } else {
-        let parts: Vec<String> = tokens.iter().filter_map(token_compact).collect();
-        format!("Tokens: {}", parts.join(" "))
     }
+    Ok(())
 }
 
-/// Compact display for one arena node kind.
-fn node_compact(kind: &NodeKind<'_>) -> String {
+/// Write a single node kind in compact form.
+fn write_node_compact<W: Write>(out: &mut W, kind: &NodeKind<'_>) -> std::io::Result<()> {
     match kind {
         NodeKind::Number(v) => {
             if v.fract() == 0.0 && v.abs() < 1e15 {
-                format!("{}", *v as i64)
+                write!(out, "{}", *v as i64)
             } else {
-                format!("{v}")
+                write!(out, "{v}")
             }
         }
         NodeKind::Constant(v) => {
             if (v - std::f64::consts::PI).abs() < 1e-14 {
-                "π".to_string()
+                write!(out, "π")
             } else if (v - std::f64::consts::E).abs() < 1e-14 {
-                "e".to_string()
+                write!(out, "e")
             } else {
-                format!("{v}")
+                write!(out, "{v}")
             }
         }
-        NodeKind::Variable(name) => name.to_string(),
-        NodeKind::Neg(a) => format!("-(n{a})"),
-        NodeKind::Add(a, b) => format!("n{a} + n{b}"),
-        NodeKind::Sub(a, b) => format!("n{a} - n{b}"),
-        NodeKind::Mul(a, b) => format!("n{a} * n{b}"),
-        NodeKind::Div(a, b) => format!("n{a} / n{b}"),
-        NodeKind::Pow(a, b) => format!("n{a} ^ n{b}"),
-        NodeKind::Sin(a) => format!("sin(n{a})"),
-        NodeKind::Cos(a) => format!("cos(n{a})"),
-        NodeKind::Tan(a) => format!("tan(n{a})"),
-        NodeKind::Ln(a) => format!("ln(n{a})"),
-        NodeKind::Log(a) => format!("log(n{a})"),
-        NodeKind::Sqrt(a) => format!("sqrt(n{a})"),
-        NodeKind::Call { hash, arg } => format!("call<{hash}>(n{arg})"),
+        NodeKind::Variable(name)      => write!(out, "{name}"),
+        NodeKind::Neg(a)              => write!(out, "-(n{a})"),
+        NodeKind::Add(a, b)           => write!(out, "n{a} + n{b}"),
+        NodeKind::Sub(a, b)           => write!(out, "n{a} - n{b}"),
+        NodeKind::Mul(a, b)           => write!(out, "n{a} * n{b}"),
+        NodeKind::Div(a, b)           => write!(out, "n{a} / n{b}"),
+        NodeKind::Pow(a, b)           => write!(out, "n{a} ^ n{b}"),
+        NodeKind::Sin(a)              => write!(out, "sin(n{a})"),
+        NodeKind::Cos(a)              => write!(out, "cos(n{a})"),
+        NodeKind::Tan(a)              => write!(out, "tan(n{a})"),
+        NodeKind::Ln(a)               => write!(out, "ln(n{a})"),
+        NodeKind::Log(a)              => write!(out, "log(n{a})"),
+        NodeKind::Sqrt(a)             => write!(out, "sqrt(n{a})"),
+        NodeKind::Call { hash, arg }  => write!(out, "call<{hash}>(n{arg})"),
     }
 }
 
-/// Verbose display for one arena node (original style).
-fn node_verbose(kind: &NodeKind<'_>) -> String {
+/// Write a single node kind in verbose form.
+fn write_node_verbose<W: Write>(out: &mut W, kind: &NodeKind<'_>) -> std::io::Result<()> {
     match kind {
-        NodeKind::Number(value) => format!("Number({value})"),
-        NodeKind::Constant(value) => format!("Constant({value})"),
-        NodeKind::Variable(name) => format!("Variable({name:?})"),
-        NodeKind::Neg(child) => format!("Neg(n{child})"),
-        NodeKind::Add(left, right) => format!("Add(n{left}, n{right})"),
-        NodeKind::Sub(left, right) => format!("Sub(n{left}, n{right})"),
-        NodeKind::Mul(left, right) => format!("Mul(n{left}, n{right})"),
-        NodeKind::Div(left, right) => format!("Div(n{left}, n{right})"),
-        NodeKind::Pow(left, right) => format!("Pow(n{left}, n{right})"),
-        NodeKind::Sin(child) => format!("Sin(n{child})"),
-        NodeKind::Cos(child) => format!("Cos(n{child})"),
-        NodeKind::Tan(child) => format!("Tan(n{child})"),
-        NodeKind::Ln(child) => format!("Ln(n{child})"),
-        NodeKind::Log(child) => format!("Log(n{child})"),
-        NodeKind::Sqrt(child) => format!("Sqrt(n{child})"),
-        NodeKind::Call { hash, arg } => format!("Call(hash: {hash}, arg: n{arg})"),
+        NodeKind::Number(v)           => write!(out, "Number({v})"),
+        NodeKind::Constant(v)         => write!(out, "Constant({v})"),
+        NodeKind::Variable(name)      => write!(out, "Variable({name:?})"),
+        NodeKind::Neg(c)              => write!(out, "Neg(n{c})"),
+        NodeKind::Add(l, r)           => write!(out, "Add(n{l}, n{r})"),
+        NodeKind::Sub(l, r)           => write!(out, "Sub(n{l}, n{r})"),
+        NodeKind::Mul(l, r)           => write!(out, "Mul(n{l}, n{r})"),
+        NodeKind::Div(l, r)           => write!(out, "Div(n{l}, n{r})"),
+        NodeKind::Pow(l, r)           => write!(out, "Pow(n{l}, n{r})"),
+        NodeKind::Sin(c)              => write!(out, "Sin(n{c})"),
+        NodeKind::Cos(c)              => write!(out, "Cos(n{c})"),
+        NodeKind::Tan(c)              => write!(out, "Tan(n{c})"),
+        NodeKind::Ln(c)               => write!(out, "Ln(n{c})"),
+        NodeKind::Log(c)              => write!(out, "Log(n{c})"),
+        NodeKind::Sqrt(c)             => write!(out, "Sqrt(n{c})"),
+        NodeKind::Call { hash, arg }  => write!(out, "Call(hash: {hash}, arg: n{arg})"),
     }
 }
 
-/// Format the arena as a String.
-fn format_arena(root: u32, arena: &[Node<'_>], verbose: bool) -> String {
-    let mut out = format!("AST root: n{root}\nAST arena:");
+/// Write the full arena.
+fn write_arena<W: Write>(
+    out: &mut W,
+    root: u32,
+    arena: &[Node<'_>],
+    verbose: bool,
+) -> std::io::Result<()> {
+    write!(out, "AST root: n{root}\nAST arena:")?;
     for (i, node) in arena.iter().enumerate() {
+        write!(out, "\n  n{i}: ")?;
         if verbose {
-            out.push_str(&format!("\n  n{i}: {}", node_verbose(&node.kind)));
+            write_node_verbose(out, &node.kind)?;
         } else {
-            out.push_str(&format!("\n  n{i}: {}", node_compact(&node.kind)));
+            write_node_compact(out, &node.kind)?;
         }
     }
-    out
+    Ok(())
 }
 
 // -----------------------------------------------------------------------
@@ -129,24 +144,29 @@ fn format_arena(root: u32, arena: &[Node<'_>], verbose: bool) -> String {
 // -----------------------------------------------------------------------
 
 fn main() {
-    let _profiler = dhat::Profiler::new_heap();
+    //let _profiler = dhat::Profiler::new_heap();
     let verbose = std::env::args().any(|a| a == "--debug");
 
+    // Single BufWriter wrapping stdout — flushed explicitly at prompt and
+    // at the end of each iteration. Keeps all small writes off the heap.
+    let stdout = std::io::stdout();
+    let mut out = BufWriter::new(stdout.lock());
+
     if verbose {
-        println!("Debug mode ON");
+        writeln!(out, "Debug mode ON").ok();
     }
-    println!("Enter a math expression:");
-    println!("[ use 'quit' / 'exit' / ':q' to exit the program ]");
-    println!();
+    writeln!(out, "Enter a math expression:").ok();
+    writeln!(out, "[ use 'quit' / 'exit' / ':q' to exit the program ]").ok();
+    writeln!(out).ok();
 
     let mut line = String::with_capacity(64);
+    // tokens lives outside the loop: Vec capacity reused every iteration.
+    let mut tokens: Vec<Token> = Vec::new();
+
     loop {
-        // Prompt
-        print!("~ ");
-        {
-            use std::io::Write;
-            std::io::stdout().flush().ok();
-        }
+        // Prompt — flush so the user sees "~ " before blocking on stdin.
+        write!(out, "~ ").ok();
+        out.flush().ok();
 
         let threshold_capacity = 512;
         if line.capacity() > threshold_capacity {
@@ -155,58 +175,48 @@ fn main() {
         line.clear();
 
         match std::io::stdin().read_line(&mut line) {
-            Ok(0) => break, // EOF (e.g. piped input finished)
+            Ok(0) => break,
             Ok(_) => {}
-            Err(e) => {
-                eprintln!("Error: {e}");
-                break;
-            }
+            Err(e) => { eprintln!("Error: {e}"); break; }
         }
 
         let expression = line.trim();
 
-        // Exit commands
         if matches!(expression, "quit" | "exit" | ":q") {
-            println!("bye bye");
+            writeln!(out, "bye bye").ok();
             break;
         }
 
-        // Skip blank lines
         if expression.is_empty() {
             continue;
         }
 
-        // Tokenize + parse — all formatting happens *inside* the closure so
-        // that arena's lifetime (which borrows from tokens) stays fully
-        // contained; we return only owned Strings across the closure boundary.
-        let result = std::panic::catch_unwind(|| {
-            let tokens = Tokenizer::new(expression).tokenize();
-            let token_line = format_tokens(&tokens, verbose);
+        // Tokenize — tokens borrows nothing from `line` (offset-based).
+        if let Err(e) = Tokenizer::new(expression).tokenize(&mut tokens) {
+            eprintln!("Error: {e}");
+            writeln!(out).ok();
+            out.flush().ok();
+            continue;
+        }
 
-            let (root, arena) = Parser::new(&tokens).parse();
-            let arena_text = format_arena(root, &arena, verbose);
+        // Write token line directly to BufWriter.
+        write_tokens(&mut out, &tokens, expression, verbose).ok();
+        writeln!(out).ok();
+        writeln!(out).ok();
 
-            (token_line, arena_text)
-        });
-
-        match result {
+        // Parse — passes `expression` so the parser can resolve slices.
+        match Parser::new(&tokens, expression).parse() {
             Err(e) => {
-                let msg = if let Some(s) = e.downcast_ref::<String>() {
-                    s.clone()
-                } else if let Some(s) = e.downcast_ref::<&str>() {
-                    s.to_string()
-                } else {
-                    "unknown error".to_string()
-                };
-                eprintln!("Error: {msg}");
+                eprintln!("Error: {e}");
+                writeln!(out).ok();
             }
-            Ok((token_line, arena_text)) => {
-                println!("{token_line}");
-                println!();
-                println!("{arena_text}");
+            Ok((root, arena)) => {
+                write_arena(&mut out, root, &arena, verbose).ok();
+                writeln!(out).ok();
             }
         }
 
-        println!();
+        writeln!(out).ok();
+        out.flush().ok();
     }
 }
