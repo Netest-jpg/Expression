@@ -1,0 +1,543 @@
+{
+"dhatFileVersion": 2,
+"mode": "rust-heap",
+"verb": "Allocated",
+"bklt": true,
+"bkacc": false,
+"tu": "µs",
+"Mtu": "s",
+"tuth": 10,
+"cmd": "target/release/expression",
+"pid": 17461,
+"tg": 35765170,
+"te": 36951972,
+"pps": [
+{
+"tb": 200000,
+"tbk": 200000,
+"tl": 1107954,
+"mb": 1,
+"mbk": 1,
+"gb": 0,
+"gbk": 0,
+"eb": 0,
+"ebk": 0,
+"fs": [
+1,
+2
+]
+},
+{
+"tb": 8192,
+"tbk": 1,
+"tl": 36951753,
+"mb": 8192,
+"mbk": 1,
+"gb": 8192,
+"gbk": 1,
+"eb": 8192,
+"ebk": 1,
+"fs": [
+1,
+3,
+4,
+5,
+6,
+7
+]
+},
+{
+"tb": 5300000,
+"tbk": 100000,
+"tl": 567205,
+"mb": 53,
+"mbk": 1,
+"gb": 0,
+"gbk": 0,
+"eb": 0,
+"ebk": 0,
+"fs": [
+1,
+8,
+9
+]
+},
+{
+"tb": 25,
+"tbk": 1,
+"tl": 41,
+"mb": 25,
+"mbk": 1,
+"gb": 0,
+"gbk": 0,
+"eb": 0,
+"ebk": 0,
+"fs": [
+1,
+10,
+11
+]
+},
+{
+"tb": 24,
+"tbk": 1,
+"tl": 48,
+"mb": 24,
+"mbk": 1,
+"gb": 0,
+"gbk": 0,
+"eb": 0,
+"ebk": 0,
+"fs": [
+1,
+12,
+11
+]
+},
+{
+"tb": 1200000,
+"tbk": 100000,
+"tl": 562525,
+"mb": 12,
+"mbk": 1,
+"gb": 0,
+"gbk": 0,
+"eb": 0,
+"ebk": 0,
+"fs": [
+1,
+13,
+14
+]
+},
+{
+"tb": 1400000,
+"tbk": 100000,
+"tl": 567341,
+"mb": 14,
+"mbk": 1,
+"gb": 0,
+"gbk": 0,
+"eb": 0,
+"ebk": 0,
+"fs": [
+1,
+13,
+15
+]
+},
+{
+"tb": 144000000,
+"tbk": 400000,
+"tl": 5058199,
+"mb": 768,
+"mbk": 1,
+"gb": 0,
+"gbk": 0,
+"eb": 0,
+"ebk": 0,
+"fs": [
+1,
+16,
+17
+]
+},
+{
+"tb": 300000,
+"tbk": 100000,
+"tl": 15830779,
+"mb": 3,
+"mbk": 1,
+"gb": 0,
+"gbk": 0,
+"eb": 0,
+"ebk": 0,
+"fs": [
+1,
+18,
+19,
+17
+]
+},
+{
+"tb": 39600000,
+"tbk": 2400000,
+"tl": 196156,
+"mb": 24,
+"mbk": 1,
+"gb": 24,
+"gbk": 1,
+"eb": 0,
+"ebk": 0,
+"fs": [
+1,
+13,
+20
+]
+},
+{
+"tb": 29250,
+"tbk": 878,
+"tl": 159755,
+"mb": 72,
+"mbk": 1,
+"gb": 72,
+"gbk": 1,
+"eb": 0,
+"ebk": 0,
+"fs": [
+1,
+21,
+22,
+23,
+24,
+25
+]
+},
+{
+"tb": 64,
+"tbk": 1,
+"tl": 36951705,
+"mb": 64,
+"mbk": 1,
+"gb": 64,
+"gbk": 1,
+"eb": 64,
+"ebk": 1,
+"fs": [
+1,
+26,
+27,
+25
+]
+},
+{
+"tb": 57600000,
+"tbk": 100000,
+"tl": 18209414,
+"mb": 576,
+"mbk": 1,
+"gb": 576,
+"gbk": 1,
+"eb": 0,
+"ebk": 0,
+"fs": [
+1,
+28
+]
+},
+{
+"tb": 2400000,
+"tbk": 300000,
+"tl": 1666353,
+"mb": 8,
+"mbk": 1,
+"gb": 0,
+"gbk": 0,
+"eb": 0,
+"ebk": 0,
+"fs": [
+1,
+29,
+30,
+31,
+32,
+33,
+34,
+35
+]
+},
+{
+"tb": 2000000,
+"tbk": 200000,
+"tl": 1128766,
+"mb": 10,
+"mbk": 1,
+"gb": 0,
+"gbk": 0,
+"eb": 0,
+"ebk": 0,
+"fs": [
+1,
+13,
+36
+]
+},
+{
+"tb": 2000000,
+"tbk": 200000,
+"tl": 1129673,
+"mb": 10,
+"mbk": 1,
+"gb": 10,
+"gbk": 1,
+"eb": 0,
+"ebk": 0,
+"fs": [
+1,
+13,
+37
+]
+},
+{
+"tb": 1024,
+"tbk": 1,
+"tl": 36951844,
+"mb": 1024,
+"mbk": 1,
+"gb": 1024,
+"gbk": 1,
+"eb": 1024,
+"ebk": 1,
+"fs": [
+1,
+38,
+4,
+39,
+40,
+41
+]
+},
+{
+"tb": 100000,
+"tbk": 100000,
+"tl": 552274,
+"mb": 1,
+"mbk": 1,
+"gb": 0,
+"gbk": 0,
+"eb": 0,
+"ebk": 0,
+"fs": [
+1,
+42
+]
+},
+{
+"tb": 1000000,
+"tbk": 100000,
+"tl": 564392,
+"mb": 10,
+"mbk": 1,
+"gb": 0,
+"gbk": 0,
+"eb": 0,
+"ebk": 0,
+"fs": [
+1,
+13,
+43
+]
+},
+{
+"tb": 121600000,
+"tbk": 100000,
+"tl": 35272500,
+"mb": 1216,
+"mbk": 1,
+"gb": 1216,
+"gbk": 1,
+"eb": 0,
+"ebk": 0,
+"fs": [
+1,
+44,
+45
+]
+},
+{
+"tb": 3783326,
+"tbk": 99562,
+"tl": 35915258,
+"mb": 38,
+"mbk": 1,
+"gb": 0,
+"gbk": 0,
+"eb": 0,
+"ebk": 0,
+"fs": [
+1,
+21,
+22,
+46,
+24,
+25
+]
+},
+{
+"tb": 1000000,
+"tbk": 100000,
+"tl": 563717,
+"mb": 10,
+"mbk": 1,
+"gb": 0,
+"gbk": 0,
+"eb": 0,
+"ebk": 0,
+"fs": [
+1,
+13,
+47
+]
+},
+{
+"tb": 64,
+"tbk": 1,
+"tl": 36951790,
+"mb": 64,
+"mbk": 1,
+"gb": 64,
+"gbk": 1,
+"eb": 64,
+"ebk": 1,
+"fs": [
+1,
+26,
+48,
+49,
+50,
+41
+]
+},
+{
+"tb": 1300000,
+"tbk": 1300000,
+"tl": 103971868,
+"mb": 13,
+"mbk": 13,
+"gb": 0,
+"gbk": 0,
+"eb": 0,
+"ebk": 0,
+"fs": [
+1,
+51,
+52,
+17
+]
+},
+{
+"tb": 7700000,
+"tbk": 200000,
+"tl": 18981714,
+"mb": 61,
+"mbk": 1,
+"gb": 61,
+"gbk": 1,
+"eb": 0,
+"ebk": 0,
+"fs": [
+1,
+13,
+53
+]
+},
+{
+"tb": 66000000,
+"tbk": 400000,
+"tl": 1325742,
+"mb": 352,
+"mbk": 1,
+"gb": 352,
+"gbk": 1,
+"eb": 0,
+"ebk": 0,
+"fs": [
+1,
+13,
+54
+]
+},
+{
+"tb": 1200000,
+"tbk": 100000,
+"tl": 563883,
+"mb": 12,
+"mbk": 1,
+"gb": 0,
+"gbk": 0,
+"eb": 0,
+"ebk": 0,
+"fs": [
+1,
+13,
+55
+]
+},
+{
+"tb": 1500000,
+"tbk": 900000,
+"tl": 70275748,
+"mb": 15,
+"mbk": 9,
+"gb": 0,
+"gbk": 0,
+"eb": 0,
+"ebk": 0,
+"fs": [
+1,
+18,
+52,
+17
+]
+}
+],
+"ftbl": [
+"[root]",
+"0x102fb3180: <dhat::Alloc as core::alloc::global::GlobalAlloc>::alloc (???:0:0)",
+"0x102fad124: expression::main (???:0:0)",
+"0x102ff1df8: <std::sync::once::Once>::call_once_force::<<std::sync::once_lock::OnceLock<std::sync::poison::mutex::Mutex<std::io::buffered::bufreader::BufReader<std::io::stdio::StdinRaw>>>>::initialize<<std::sync::once_lock::OnceLock<std::sync::poison::mutex::Mutex<std::io::buffered::bufreader::BufReader<std::io::stdio::StdinRaw>>>>::get_or_init<std::io::stdio::stdin::{closure#0}>::{closure#0}, !>::{closure#0}>::{closure#0} (???:0:0)",
+"0x103022108: <std::sys::sync::once::queue::Once>::call (???:0:0)",
+"0x103021af0: <std::sync::once_lock::OnceLock<std::sync::poison::mutex::Mutex<std::io::buffered::bufreader::BufReader<std::io::stdio::StdinRaw>>>>::initialize::<<std::sync::once_lock::OnceLock<std::sync::poison::mutex::Mutex<std::io::buffered::bufreader::BufReader<std::io::stdio::StdinRaw>>>>::get_or_init<std::io::stdio::stdin::{closure#0}>::{closure#0}, !> (???:0:0)",
+"0x102ffff30: std::io::stdio::stdin (???:0:0)",
+"0x102facbf8: expression::main (???:0:0)",
+"0x102faf8f8: alloc::str::join_generic_copy (???:0:0)",
+"0x102faccc4: expression::main (???:0:0)",
+"0x102fff300: std::env::args_os (???:0:0)",
+"0x102fac98c: expression::main (???:0:0)",
+"0x102fff298: std::env::args_os (???:0:0)",
+"0x103011274: alloc::fmt::format::format_inner (???:0:0)",
+"0x102fad33c: expression::main (???:0:0)",
+"0x102fad01c: expression::main (???:0:0)",
+"0x102faeb44: <alloc::vec::Vec<T> as alloc::vec::spec_from_iter_nested::SpecFromIterNested<T,I>>::from_iter (???:0:0)",
+"0x102facca4: expression::main (???:0:0)",
+"0x102fae12c: core::ops::function::impls::<impl core::ops::function::FnMut<A> for &mut F>::call_mut (???:0:0)",
+"0x102faeb18: <alloc::vec::Vec<T> as alloc::vec::spec_from_iter_nested::SpecFromIterNested<T,I>>::from_iter (???:0:0)",
+"0x102fad46c: expression::main (???:0:0)",
+"0x103022898: <alloc::raw_vec::RawVecInner>::finish_grow (???:0:0)",
+"0x103021e10: <alloc::raw_vec::RawVecInner<_>>::reserve::do_reserve_and_handle::<alloc::alloc::Global> (???:0:0)",
+"0x102fe8378: std::io::read_until::<std::io::buffered::bufreader::BufReader<std::io::stdio::StdinRaw>> (???:0:0)",
+"0x102ff57e8: <std::io::stdio::Stdin>::read_line (???:0:0)",
+"0x102facc08: expression::main (???:0:0)",
+"0x103021b48: <std::sys::sync::once_box::OnceBox<std::sys::pal::unix::sync::mutex::Mutex>>::initialize::<<std::sys::sync::mutex::pthread::Mutex>::get::{closure#0}> (???:0:0)",
+"0x102ff587c: <std::io::stdio::Stdin>::read_line (???:0:0)",
+"0x102face94: expression::main (???:0:0)",
+"0x103022ddc: <alloc::raw_vec::RawVecInner>::finish_grow (???:0:0)",
+"0x103022d50: <alloc::raw_vec::RawVecInner<_>>::reserve::do_reserve_and_handle::<alloc::alloc::Global> (???:0:0)",
+"0x1030115d8: <alloc::string::String as core::fmt::Write>::write_str (???:0:0)",
+"0x10301aecc: <isize as core::fmt::Display>::fmt (???:0:0)",
+"0x103014dfc: core::fmt::write (???:0:0)",
+"0x1030112a0: alloc::fmt::format::format_inner (???:0:0)",
+"0x102facfe8: expression::main (???:0:0)",
+"0x102fad380: expression::main (???:0:0)",
+"0x102fad094: expression::main (???:0:0)",
+"0x102ff1d28: <std::sync::once::Once>::call_once_force::<<std::sync::once_lock::OnceLock<std::sync::reentrant_lock::ReentrantLock<core::cell::RefCell<std::io::buffered::linewriter::LineWriter<std::io::stdio::StdoutRaw>>>>>::initialize<<std::sync::once_lock::OnceLock<std::sync::reentrant_lock::ReentrantLock<core::cell::RefCell<std::io::buffered::linewriter::LineWriter<std::io::stdio::StdoutRaw>>>>>::get_or_init<std::io::stdio::stdout::{closure#0}>::{closure#0}, !>::{closure#0}>::{closure#0} (???:0:0)",
+"0x103021a34: <std::sync::once_lock::OnceLock<std::sync::reentrant_lock::ReentrantLock<core::cell::RefCell<std::io::buffered::linewriter::LineWriter<std::io::stdio::StdoutRaw>>>>>::initialize::<<std::sync::once_lock::OnceLock<std::sync::reentrant_lock::ReentrantLock<core::cell::RefCell<std::io::buffered::linewriter::LineWriter<std::io::stdio::StdoutRaw>>>>>::get_or_init<std::io::stdio::stdout::{closure#0}>::{closure#0}, !> (???:0:0)",
+"0x102ffffbc: std::io::stdio::_print (???:0:0)",
+"0x102facb3c: expression::main (???:0:0)",
+"0x102fad3d4: expression::main (???:0:0)",
+"0x102fad308: expression::main (???:0:0)",
+"0x102faf280: expression::lexer::Tokenizer::tokenize (???:0:0)",
+"0x102facc80: expression::main (???:0:0)",
+"0x102fe844c: std::io::read_until::<std::io::buffered::bufreader::BufReader<std::io::stdio::StdinRaw>> (???:0:0)",
+"0x102fad0c8: expression::main (???:0:0)",
+"0x102ff8f1c: <std::io::stdio::Stderr>::lock (???:0:0)",
+"0x103006b78: <&std::io::stdio::Stdout as std::io::Write>::write_fmt (???:0:0)",
+"0x102ffffa4: std::io::stdio::_print (???:0:0)",
+"0x102fae0dc: core::ops::function::impls::<impl core::ops::function::FnMut<A> for &mut F>::call_mut (???:0:0)",
+"0x102faeb9c: <alloc::vec::Vec<T> as alloc::vec::spec_from_iter_nested::SpecFromIterNested<T,I>>::from_iter (???:0:0)",
+"0x102faccfc: expression::main (???:0:0)",
+"0x102facf3c: expression::main (???:0:0)",
+"0x102fad0fc: expression::main (???:0:0)"
+]
+}

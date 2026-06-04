@@ -1,34 +1,6 @@
 #![allow(dead_code)] // public API items used by downstream consumers
 
-use crate::lexer::{KW_COS, KW_E, KW_LN, KW_LOG, KW_PI, KW_SIN, KW_SQRT, KW_TAN, Token};
-
-#[inline(always)]
-fn parse_number(raw: &str) -> f64 {
-    let bytes = raw.as_bytes();
-    let mut int = 0.0;
-    let mut frac = 0.0;
-    let mut scale = 1.0;
-    let mut i = 0;
-
-    while i < bytes.len() {
-        let b = unsafe { *bytes.get_unchecked(i) };
-        if b == b'.' {
-            i += 1;
-            break;
-        }
-        int = int * 10.0 + f64::from(b - b'0');
-        i += 1;
-    }
-
-    while i < bytes.len() {
-        let b = unsafe { *bytes.get_unchecked(i) };
-        scale *= 0.1;
-        frac += f64::from(b - b'0') * scale;
-        i += 1;
-    }
-
-    int + frac
-}
+use crate::lexer::{Token, KW_COS, KW_E, KW_LN, KW_LOG, KW_PI, KW_SIN, KW_SQRT, KW_TAN};
 
 // -----------------------------------------------------------------------
 // Binding-power table (Pratt core)
@@ -226,7 +198,9 @@ impl<'src> Parser<'src> {
         let tok = self.advance();
         match tok {
             Token::Number { raw, .. } => {
-                let v = parse_number(raw);
+                let v = raw
+                    .parse::<f64>()
+                    .expect("lexer guarantees valid number literal");
                 self.push(NodeKind::Number(v))
             }
 

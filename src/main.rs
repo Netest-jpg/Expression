@@ -11,24 +11,24 @@ use parser::{Node, NodeKind, Parser};
 /// Compact single-character display for operator tokens.
 fn token_display(tok: &Token<'_>) -> Option<&'static str> {
     Some(match tok {
-        Token::Plus             => "+",
-        Token::Minus            => "-",
-        Token::Asterisk         => "*",
-        Token::ForwardSlash     => "/",
-        Token::Caret            => "^",
-        Token::LeftParenthesis  => "(",
+        Token::Plus => "+",
+        Token::Minus => "-",
+        Token::Asterisk => "*",
+        Token::ForwardSlash => "/",
+        Token::Caret => "^",
+        Token::LeftParenthesis => "(",
         Token::RightParenthesis => ")",
-        Token::EndOfFile        => return None,
-        _                       => return None, // Number/Identifier handled below
+        Token::EndOfFile => return None,
+        _ => return None, // Number/Identifier handled below
     })
 }
 
 /// Build the compact display string for one token (None = skip).
 fn token_compact(tok: &Token<'_>) -> Option<String> {
     match tok {
-        Token::Number { raw, .. }     => Some(raw.to_string()),
+        Token::Number { raw, .. } => Some(raw.to_string()),
         Token::Identifier { name, .. } => Some(name.to_string()),
-        Token::EndOfFile              => None,
+        Token::EndOfFile => None,
         other => token_display(other).map(|s| s.to_string()),
     }
 }
@@ -70,19 +70,19 @@ fn node_compact(kind: &NodeKind<'_>) -> String {
                 format!("{v}")
             }
         }
-        NodeKind::Variable(name)     => name.to_string(),
-        NodeKind::Neg(a)             => format!("-(n{a})"),
-        NodeKind::Add(a, b)          => format!("n{a} + n{b}"),
-        NodeKind::Sub(a, b)          => format!("n{a} - n{b}"),
-        NodeKind::Mul(a, b)          => format!("n{a} * n{b}"),
-        NodeKind::Div(a, b)          => format!("n{a} / n{b}"),
-        NodeKind::Pow(a, b)          => format!("n{a} ^ n{b}"),
-        NodeKind::Sin(a)             => format!("sin(n{a})"),
-        NodeKind::Cos(a)             => format!("cos(n{a})"),
-        NodeKind::Tan(a)             => format!("tan(n{a})"),
-        NodeKind::Ln(a)              => format!("ln(n{a})"),
-        NodeKind::Log(a)             => format!("log(n{a})"),
-        NodeKind::Sqrt(a)            => format!("sqrt(n{a})"),
+        NodeKind::Variable(name) => name.to_string(),
+        NodeKind::Neg(a) => format!("-(n{a})"),
+        NodeKind::Add(a, b) => format!("n{a} + n{b}"),
+        NodeKind::Sub(a, b) => format!("n{a} - n{b}"),
+        NodeKind::Mul(a, b) => format!("n{a} * n{b}"),
+        NodeKind::Div(a, b) => format!("n{a} / n{b}"),
+        NodeKind::Pow(a, b) => format!("n{a} ^ n{b}"),
+        NodeKind::Sin(a) => format!("sin(n{a})"),
+        NodeKind::Cos(a) => format!("cos(n{a})"),
+        NodeKind::Tan(a) => format!("tan(n{a})"),
+        NodeKind::Ln(a) => format!("ln(n{a})"),
+        NodeKind::Log(a) => format!("log(n{a})"),
+        NodeKind::Sqrt(a) => format!("sqrt(n{a})"),
         NodeKind::Call { hash, arg } => format!("call<{hash}>(n{arg})"),
     }
 }
@@ -90,21 +90,21 @@ fn node_compact(kind: &NodeKind<'_>) -> String {
 /// Verbose display for one arena node (original style).
 fn node_verbose(kind: &NodeKind<'_>) -> String {
     match kind {
-        NodeKind::Number(value)      => format!("Number({value})"),
-        NodeKind::Constant(value)    => format!("Constant({value})"),
-        NodeKind::Variable(name)     => format!("Variable({name:?})"),
-        NodeKind::Neg(child)         => format!("Neg(n{child})"),
-        NodeKind::Add(left, right)   => format!("Add(n{left}, n{right})"),
-        NodeKind::Sub(left, right)   => format!("Sub(n{left}, n{right})"),
-        NodeKind::Mul(left, right)   => format!("Mul(n{left}, n{right})"),
-        NodeKind::Div(left, right)   => format!("Div(n{left}, n{right})"),
-        NodeKind::Pow(left, right)   => format!("Pow(n{left}, n{right})"),
-        NodeKind::Sin(child)         => format!("Sin(n{child})"),
-        NodeKind::Cos(child)         => format!("Cos(n{child})"),
-        NodeKind::Tan(child)         => format!("Tan(n{child})"),
-        NodeKind::Ln(child)          => format!("Ln(n{child})"),
-        NodeKind::Log(child)         => format!("Log(n{child})"),
-        NodeKind::Sqrt(child)        => format!("Sqrt(n{child})"),
+        NodeKind::Number(value) => format!("Number({value})"),
+        NodeKind::Constant(value) => format!("Constant({value})"),
+        NodeKind::Variable(name) => format!("Variable({name:?})"),
+        NodeKind::Neg(child) => format!("Neg(n{child})"),
+        NodeKind::Add(left, right) => format!("Add(n{left}, n{right})"),
+        NodeKind::Sub(left, right) => format!("Sub(n{left}, n{right})"),
+        NodeKind::Mul(left, right) => format!("Mul(n{left}, n{right})"),
+        NodeKind::Div(left, right) => format!("Div(n{left}, n{right})"),
+        NodeKind::Pow(left, right) => format!("Pow(n{left}, n{right})"),
+        NodeKind::Sin(child) => format!("Sin(n{child})"),
+        NodeKind::Cos(child) => format!("Cos(n{child})"),
+        NodeKind::Tan(child) => format!("Tan(n{child})"),
+        NodeKind::Ln(child) => format!("Ln(n{child})"),
+        NodeKind::Log(child) => format!("Log(n{child})"),
+        NodeKind::Sqrt(child) => format!("Sqrt(n{child})"),
         NodeKind::Call { hash, arg } => format!("Call(hash: {hash}, arg: n{arg})"),
     }
 }
@@ -138,18 +138,24 @@ fn main() {
 
     loop {
         // Prompt
-        print!("- ");
+        print!("~ ");
         {
             use std::io::Write;
             std::io::stdout().flush().ok();
         }
 
-        let mut line = String::new();
+        let mut line = String::with_capacity(64);
+        let threshold_capacity = 512;
+        if line.capacity() > threshold_capacity {
+            line.shrink_to(128);
+        }
+        line.clear();
+
         match std::io::stdin().read_line(&mut line) {
             Ok(0) => break, // EOF (e.g. piped input finished)
             Ok(_) => {}
             Err(e) => {
-                eprintln!("Read error: {e}");
+                eprintln!("Error: {e}");
                 break;
             }
         }
