@@ -1,10 +1,7 @@
-#![allow(dead_code)] // public API items used by downstream consumers
+#![allow(dead_code)]
 
 use crate::lexer::{Token, KW_COS, KW_E, KW_LN, KW_LOG, KW_PI, KW_SIN, KW_SQRT, KW_TAN};
 
-// -----------------------------------------------------------------------
-// Binding-power table (Pratt core)
-// -----------------------------------------------------------------------
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum TokenKind {
@@ -21,7 +18,6 @@ enum TokenKind {
     _Count = 10,
 }
 
-/// Left binding power for each token kind.
 static LBP: [u8; TokenKind::_Count as usize] = {
     let mut t = [0u8; TokenKind::_Count as usize];
     t[TokenKind::Plus as usize] = 10;
@@ -56,8 +52,8 @@ pub enum NodeKind {
     Number(f64),
     /// π or e — resolved at parse time.
     Constant(f64),
-    /// Variable name as a borrowed slice into the source.
-    Variable(u32,u32),
+    /// Variable name stored as byte offsets into the source string.
+    Variable(u32, u32),
     Neg(u32),
     Add(u32, u32),
     Sub(u32, u32),
@@ -84,19 +80,22 @@ pub struct Node {
 // -----------------------------------------------------------------------
 // Parser
 // -----------------------------------------------------------------------
-pub struct Parser<'src> {
+pub struct Parser<'src, 'arena> {
     tokens: &'src [Token],
     /// Original source — needed to resolve Number/Identifier byte ranges.
     src: &'src str,
     pos: usize,
-    arena: Vec<Node>,
+    /// Borrowed from the caller so the allocation is always preserved,
+    /// even when parse() returns Err. Caller must clear before calling new().
+    arena: &'arena mut Vec<Node>,
 }
 
-impl<'src> Parser<'src> {
+impl<'src, 'arena> Parser<'src, 'arena> {
     /// Create a parser. `tokens` must end with `Token::EndOfFile`.
     /// `src` is the original expression string the tokens were scanned from.
-    /// Pass an external `arena` so its allocation can be reused across calls.
-    pub fn new(tokens: &'src [Token], src: &'src str, arena: Vec<Node>) -> Self {
+    /// `arena` must already be cleared by the caller; its allocation is
+    /// preserved across both Ok and Err returns.
+    pub fn new(tokens: &'src [Token], src: &'src str, arena: &'arena mut Vec<Node>) -> Self {
         Parser {
             tokens,
             src,
@@ -105,20 +104,12 @@ impl<'src> Parser<'src> {
         }
     }
 
-    // -------------------------------------------------------------------
-    // Arena helpers
-    // -------------------------------------------------------------------
-
     #[inline(always)]
     fn push(&mut self, kind: NodeKind) -> u32 {
         let idx = self.arena.len() as u32;
         self.arena.push(Node { kind });
         idx
     }
-
-    // -------------------------------------------------------------------
-    // Token stream helpers
-    // -------------------------------------------------------------------
 
     #[inline(always)]
     fn peek(&self) -> &Token {
@@ -150,10 +141,6 @@ impl<'src> Parser<'src> {
         self.skip();
         Ok(())
     }
-
-    // -------------------------------------------------------------------
-    // Pratt expression parser
-    // -------------------------------------------------------------------
 
     pub fn parse_expr(&mut self, rbp: u8) -> Result<u32, String> {
         let mut left = self.nud()?;
@@ -259,18 +246,18 @@ impl<'src> Parser<'src> {
     // Public entry point
     // -------------------------------------------------------------------
 
-    pub fn parse(mut self) -> Result<(u32, Vec<Node>), String> {
+    /// Parse the token stream. Returns the root node index on success.
+    /// On either Ok or Err, the arena borrow is released back to the caller
+    /// with its allocation intact.
+    pub fn parse(mut self) -> Result<u32, String> {
         let root = self.parse_expr(0)?;
         if self.peek_kind() != TokenKind::Eof {
             return Err(format!("unexpected trailing token: {:?}", self.peek()));
         }
-        Ok((root, self.arena))
+        Ok(root)
     }
 }
 
-// -----------------------------------------------------------------------
-// Evaluator
-// -----------------------------------------------------------------------
 pub fn eval(arena: &[Node], idx: u32) -> f64 {
     match unsafe { &arena.get_unchecked(idx as usize).kind } {
         NodeKind::Number(v) => *v,
@@ -300,9 +287,6 @@ pub fn eval(arena: &[Node], idx: u32) -> f64 {
     }
 }
 
-// -----------------------------------------------------------------------
-// Tests
-// -----------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -310,8 +294,9 @@ mod tests {
 
     fn run(src: &str) -> f64 {
         let mut tokens = Vec::new();
+        let mut arena = Vec::new();
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
-        let (root, arena) = Parser::new(&tokens, src, Vec::new()).parse().unwrap();
+        let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
         eval(&arena, root)
     }
 
@@ -384,8 +369,9 @@ mod tests {
     #[test]
     fn test_arena_layout() {
         let mut tokens = Vec::new();
+        let mut arena = Vec::new();
         Tokenizer::new("1+2*3").tokenize(&mut tokens).unwrap();
-        let (root, arena) = Parser::new(&tokens, "1+2*3", Vec::new()).parse().unwrap();
+        let root = Parser::new(&tokens, "1+2*3", &mut arena).parse().unwrap();
         assert!((root as usize) < arena.len());
     }
 
@@ -403,5 +389,23 @@ mod tests {
     #[test]
     fn test_ln() {
         assert!((run("ln(e)") - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_arena_capacity_preserved_on_error() {
+        // Capacity must survive a parse error — no re-allocation next iteration.
+        let mut tokens = Vec::new();
+        let mut arena = Vec::new();
+        // First: a valid parse to grow the arena.
+        Tokenizer::new("1+2*3").tokenize(&mut tokens).unwrap();
+        Parser::new(&tokens, "1+2*3", &mut arena).parse().unwrap();
+        let cap_after_success = arena.capacity();
+        assert!(cap_after_success > 0);
+        // Now: a parse error.
+        arena.clear();
+        Tokenizer::new("1+").tokenize(&mut tokens).unwrap();
+        let _ = Parser::new(&tokens, "1+", &mut arena).parse();
+        // Capacity must be unchanged — the arena was borrowed, not moved.
+        assert_eq!(arena.capacity(), cap_after_success);
     }
 }

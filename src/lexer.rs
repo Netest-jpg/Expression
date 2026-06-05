@@ -1,8 +1,5 @@
-#![allow(dead_code)] // public API items used by downstream consumers
+#![allow(dead_code)]
 
-// -----------------------------------------------------------------------
-// FNV-1a constants (same as xnacly's C lexer)
-// -----------------------------------------------------------------------
 const FNV_OFFSET_BASIS: u64 = 14695981039346656037;
 const FNV_PRIME: u64 = 1099511628211;
 
@@ -21,9 +18,6 @@ fn fnv1a_update(hash: u64, byte: u8) -> u64 {
     (hash ^ byte as u64).wrapping_mul(FNV_PRIME)
 }
 
-// -----------------------------------------------------------------------
-// O(1) character-class lookup table
-// -----------------------------------------------------------------------
 const fn build_ident_table() -> [bool; 256] {
     let mut t = [false; 256];
     let mut c = b'a';
@@ -51,9 +45,6 @@ fn is_ident_char(c: u8) -> bool {
     unsafe { *IS_IDENT.get_unchecked(c as usize) }
 }
 
-// -----------------------------------------------------------------------
-// Dispatch table
-// -----------------------------------------------------------------------
 #[repr(u8)]
 #[derive(Clone, Copy)]
 enum Dispatch {
@@ -122,7 +113,6 @@ pub enum Token {
         end: u32,
         hash: u64,
     },
-    /// Byte range in the source + FNV hash for O(1) keyword checks.
     Identifier {
         start: u32,
         end: u32,
@@ -139,7 +129,6 @@ pub enum Token {
 }
 
 impl Token {
-    /// Resolve the raw number text from the original source.
     #[inline(always)]
     pub fn raw<'src>(&self, src: &'src str) -> &'src str {
         match self {
@@ -171,7 +160,6 @@ impl Token {
     }
 }
 
-/// Human-friendly Debug: resolves nothing (no src available), shows offsets.
 impl std::fmt::Debug for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -189,9 +177,6 @@ impl std::fmt::Debug for Token {
     }
 }
 
-// -----------------------------------------------------------------------
-// Pre-computed keyword hashes.
-// -----------------------------------------------------------------------
 pub const KW_SIN: u64 = keyword_hash(b"sin");
 pub const KW_COS: u64 = keyword_hash(b"cos");
 pub const KW_TAN: u64 = keyword_hash(b"tan");
@@ -201,9 +186,6 @@ pub const KW_SQRT: u64 = keyword_hash(b"sqrt");
 pub const KW_PI: u64 = keyword_hash(b"pi");
 pub const KW_E: u64 = keyword_hash(b"e");
 
-// -----------------------------------------------------------------------
-// Tokenizer
-// -----------------------------------------------------------------------
 pub struct Tokenizer<'src> {
     src: &'src [u8],
     pos: usize,
@@ -227,7 +209,6 @@ impl<'src> Tokenizer<'src> {
         self.pos += 1;
     }
 
-    /// Tokenize the entire input into `tokens` (cleared first).
     pub fn tokenize(&mut self, tokens: &mut Vec<Token>) -> Result<(), String> {
         tokens.clear();
         tokens.reserve(self.src.len() + 1);
@@ -354,9 +335,6 @@ impl<'src> Tokenizer<'src> {
     }
 }
 
-// -----------------------------------------------------------------------
-// Tests
-// -----------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
     use super::*;

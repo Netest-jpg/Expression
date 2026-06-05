@@ -7,12 +7,8 @@ use std::io::{BufRead, BufWriter, Write};
 use lexer::{Token, Tokenizer};
 use parser::{Node, NodeKind, Parser};
 
-//#[global_allocator]
-//static ALLOC: dhat::Alloc = dhat::Alloc;
-
-// -----------------------------------------------------------------------
-// Display helpers — write directly to a BufWriter, no intermediate String.
-// -----------------------------------------------------------------------
+// #[global_allocator]
+// static ALLOC: dhat::Alloc = dhat::Alloc;
 
 /// Write the token list.
 /// Compact: single horizontal line, no EndOfFile.
@@ -108,7 +104,9 @@ fn write_node_verbose<W: Write>(out: &mut W, kind: &NodeKind, src: &str) -> std:
     match kind {
         NodeKind::Number(v) => write!(out, "Number({v})"),
         NodeKind::Constant(v) => write!(out, "Constant({v})"),
-        NodeKind::Variable(start, end) => write!(out, "Variable({:?})", &src[*start as usize..*end as usize]),
+        NodeKind::Variable(start, end) => {
+            write!(out, "Variable({:?})", &src[*start as usize..*end as usize])
+        }
         NodeKind::Neg(c) => write!(out, "Neg(n{c})"),
         NodeKind::Add(l, r) => write!(out, "Add(n{l}, n{r})"),
         NodeKind::Sub(l, r) => write!(out, "Sub(n{l}, n{r})"),
@@ -145,29 +143,31 @@ fn write_arena<W: Write>(
     Ok(())
 }
 
-// -----------------------------------------------------------------------
-// REPL
-// -----------------------------------------------------------------------
-
 fn main() {
     //let _profiler = dhat::Profiler::new_heap();
     let verbose = std::env::args().any(|a| a == "--debug");
 
-    // Single BufWriter wrapping stdout — flushed explicitly at prompt and
-    // at the end of each iteration. Keeps all small writes off the heap.
     let stdout = std::io::stdout();
     let mut out = BufWriter::with_capacity(1 << 16, stdout.lock());
+
     let stdin = std::io::stdin();
     let mut stdin = std::io::BufReader::with_capacity(1 << 16, stdin.lock()); // lock ONCE
 
     let is_terminal = std::io::stdin().is_terminal();
 
+    // When piped (not a terminal) and not in debug mode, skip all formatting
+    // work — tokenize + parse only. This makes pipe-based benchmarks measure
+    // actual parse throughput instead of write!/format overhead.
+    let should_print = is_terminal || verbose;
+
     if verbose {
         writeln!(out, "Debug mode ON").ok();
     }
-    writeln!(out, "Enter a math expression:").ok();
-    writeln!(out, "[ use 'quit' / 'exit' / ':q' to exit the program ]").ok();
-    writeln!(out).ok();
+    if should_print {
+        writeln!(out, "Enter a math expression:").ok();
+        writeln!(out, "[ use 'quit' / 'exit' / ':q' to exit the program ]").ok();
+        writeln!(out).ok();
+    }
 
     let mut line = String::with_capacity(64);
     // tokens and arena live outside the loop: Vec capacity reused every iteration.
@@ -175,7 +175,6 @@ fn main() {
     let mut arena: Vec<Node> = Vec::new();
 
     loop {
-        // Prompt — flush so the user sees "~ " before blocking on stdin.
         if is_terminal {
             write!(out, "~ ").ok();
             out.flush().ok();
@@ -199,7 +198,9 @@ fn main() {
         let expression = line.trim();
 
         if matches!(expression, "quit" | "exit" | ":q") {
-            writeln!(out, "bye bye").ok();
+            if should_print {
+                writeln!(out, "bye bye").ok();
+            }
             break;
         }
 
@@ -210,29 +211,37 @@ fn main() {
         // Tokenize — tokens borrows nothing from `line` (offset-based).
         if let Err(e) = Tokenizer::new(expression).tokenize(&mut tokens) {
             eprintln!("Error: {e}");
-            writeln!(out).ok();
-            out.flush().ok();
+            if should_print {
+                writeln!(out).ok();
+                out.flush().ok();
+            }
             continue;
         }
 
-        // Write token line directly to BufWriter.
-        write_tokens(&mut out, &tokens, expression, verbose).ok();
-        writeln!(out).ok();
-        writeln!(out).ok();
+        if should_print {
+            write_tokens(&mut out, &tokens, expression, verbose).ok();
+            writeln!(out).ok();
+            writeln!(out).ok();
+        }
 
-        // Parse — hand arena in, get it back with nodes cleared & refilled.
+        // Parse — arena is borrowed mutably; capacity is preserved on both
+        // Ok and Err, no mem::take shuffling needed.
         arena.clear();
-        match Parser::new(&tokens, expression, std::mem::take(&mut arena)).parse() {
+        match Parser::new(&tokens, expression, &mut arena).parse() {
             Err(e) => {
                 eprintln!("Error: {e}");
-                writeln!(out).ok();
+                if should_print {
+                    writeln!(out).ok();
+                }
             }
-            Ok((root, returned_arena)) => {
-                write_arena(&mut out, root, &returned_arena, expression, verbose).ok();
-                writeln!(out).ok();
-                arena = returned_arena; // reclaim the allocation
+            Ok(root) => {
+                if should_print {
+                    write_arena(&mut out, root, &arena, expression, verbose).ok();
+                    writeln!(out).ok();
+                }
             }
         }
+
         if is_terminal {
             writeln!(out).ok();
             out.flush().ok();
