@@ -1,7 +1,8 @@
 mod lexer;
 mod parser;
 
-use std::io::{BufWriter, Write};
+use std::io::IsTerminal;
+use std::io::{BufRead, BufWriter, Write};
 
 use lexer::{Token, Tokenizer};
 use parser::{Node, NodeKind, Parser};
@@ -35,21 +36,25 @@ fn write_tokens<W: Write>(
             }
             Token::Identifier { start, end, .. } => {
                 if verbose {
-                    write!(out, "\n  Identifier({})", &src[*start as usize..*end as usize])?;
+                    write!(
+                        out,
+                        "\n  Identifier({})",
+                        &src[*start as usize..*end as usize]
+                    )?;
                 } else {
                     write!(out, " {}", &src[*start as usize..*end as usize])?;
                 }
             }
             other => {
                 let s = match other {
-                    Token::Plus             => "+",
-                    Token::Minus            => "-",
-                    Token::Asterisk         => "*",
-                    Token::ForwardSlash     => "/",
-                    Token::Caret            => "^",
-                    Token::LeftParenthesis  => "(",
+                    Token::Plus => "+",
+                    Token::Minus => "-",
+                    Token::Asterisk => "*",
+                    Token::ForwardSlash => "/",
+                    Token::Caret => "^",
+                    Token::LeftParenthesis => "(",
                     Token::RightParenthesis => ")",
-                    _                       => unreachable!(),
+                    _ => unreachable!(),
                 };
                 if verbose {
                     write!(out, "\n  {s}")?;
@@ -81,42 +86,42 @@ fn write_node_compact<W: Write>(out: &mut W, kind: &NodeKind<'_>) -> std::io::Re
                 write!(out, "{v}")
             }
         }
-        NodeKind::Variable(name)      => write!(out, "{name}"),
-        NodeKind::Neg(a)              => write!(out, "-(n{a})"),
-        NodeKind::Add(a, b)           => write!(out, "n{a} + n{b}"),
-        NodeKind::Sub(a, b)           => write!(out, "n{a} - n{b}"),
-        NodeKind::Mul(a, b)           => write!(out, "n{a} * n{b}"),
-        NodeKind::Div(a, b)           => write!(out, "n{a} / n{b}"),
-        NodeKind::Pow(a, b)           => write!(out, "n{a} ^ n{b}"),
-        NodeKind::Sin(a)              => write!(out, "sin(n{a})"),
-        NodeKind::Cos(a)              => write!(out, "cos(n{a})"),
-        NodeKind::Tan(a)              => write!(out, "tan(n{a})"),
-        NodeKind::Ln(a)               => write!(out, "ln(n{a})"),
-        NodeKind::Log(a)              => write!(out, "log(n{a})"),
-        NodeKind::Sqrt(a)             => write!(out, "sqrt(n{a})"),
-        NodeKind::Call { hash, arg }  => write!(out, "call<{hash}>(n{arg})"),
+        NodeKind::Variable(name) => write!(out, "{name}"),
+        NodeKind::Neg(a) => write!(out, "-(n{a})"),
+        NodeKind::Add(a, b) => write!(out, "n{a} + n{b}"),
+        NodeKind::Sub(a, b) => write!(out, "n{a} - n{b}"),
+        NodeKind::Mul(a, b) => write!(out, "n{a} * n{b}"),
+        NodeKind::Div(a, b) => write!(out, "n{a} / n{b}"),
+        NodeKind::Pow(a, b) => write!(out, "n{a} ^ n{b}"),
+        NodeKind::Sin(a) => write!(out, "sin(n{a})"),
+        NodeKind::Cos(a) => write!(out, "cos(n{a})"),
+        NodeKind::Tan(a) => write!(out, "tan(n{a})"),
+        NodeKind::Ln(a) => write!(out, "ln(n{a})"),
+        NodeKind::Log(a) => write!(out, "log(n{a})"),
+        NodeKind::Sqrt(a) => write!(out, "sqrt(n{a})"),
+        NodeKind::Call { hash, arg } => write!(out, "call<{hash}>(n{arg})"),
     }
 }
 
 /// Write a single node kind in verbose form.
 fn write_node_verbose<W: Write>(out: &mut W, kind: &NodeKind<'_>) -> std::io::Result<()> {
     match kind {
-        NodeKind::Number(v)           => write!(out, "Number({v})"),
-        NodeKind::Constant(v)         => write!(out, "Constant({v})"),
-        NodeKind::Variable(name)      => write!(out, "Variable({name:?})"),
-        NodeKind::Neg(c)              => write!(out, "Neg(n{c})"),
-        NodeKind::Add(l, r)           => write!(out, "Add(n{l}, n{r})"),
-        NodeKind::Sub(l, r)           => write!(out, "Sub(n{l}, n{r})"),
-        NodeKind::Mul(l, r)           => write!(out, "Mul(n{l}, n{r})"),
-        NodeKind::Div(l, r)           => write!(out, "Div(n{l}, n{r})"),
-        NodeKind::Pow(l, r)           => write!(out, "Pow(n{l}, n{r})"),
-        NodeKind::Sin(c)              => write!(out, "Sin(n{c})"),
-        NodeKind::Cos(c)              => write!(out, "Cos(n{c})"),
-        NodeKind::Tan(c)              => write!(out, "Tan(n{c})"),
-        NodeKind::Ln(c)               => write!(out, "Ln(n{c})"),
-        NodeKind::Log(c)              => write!(out, "Log(n{c})"),
-        NodeKind::Sqrt(c)             => write!(out, "Sqrt(n{c})"),
-        NodeKind::Call { hash, arg }  => write!(out, "Call(hash: {hash}, arg: n{arg})"),
+        NodeKind::Number(v) => write!(out, "Number({v})"),
+        NodeKind::Constant(v) => write!(out, "Constant({v})"),
+        NodeKind::Variable(name) => write!(out, "Variable({name:?})"),
+        NodeKind::Neg(c) => write!(out, "Neg(n{c})"),
+        NodeKind::Add(l, r) => write!(out, "Add(n{l}, n{r})"),
+        NodeKind::Sub(l, r) => write!(out, "Sub(n{l}, n{r})"),
+        NodeKind::Mul(l, r) => write!(out, "Mul(n{l}, n{r})"),
+        NodeKind::Div(l, r) => write!(out, "Div(n{l}, n{r})"),
+        NodeKind::Pow(l, r) => write!(out, "Pow(n{l}, n{r})"),
+        NodeKind::Sin(c) => write!(out, "Sin(n{c})"),
+        NodeKind::Cos(c) => write!(out, "Cos(n{c})"),
+        NodeKind::Tan(c) => write!(out, "Tan(n{c})"),
+        NodeKind::Ln(c) => write!(out, "Ln(n{c})"),
+        NodeKind::Log(c) => write!(out, "Log(n{c})"),
+        NodeKind::Sqrt(c) => write!(out, "Sqrt(n{c})"),
+        NodeKind::Call { hash, arg } => write!(out, "Call(hash: {hash}, arg: n{arg})"),
     }
 }
 
@@ -150,7 +155,12 @@ fn main() {
     // Single BufWriter wrapping stdout — flushed explicitly at prompt and
     // at the end of each iteration. Keeps all small writes off the heap.
     let stdout = std::io::stdout();
-    let mut out = BufWriter::with_capacity(1<<16, stdout.lock());
+    let mut out = BufWriter::with_capacity(1 << 16, stdout.lock());
+    let stdin = std::io::stdin();
+    let mut stdin = std::io::BufReader::with_capacity(1 << 16, stdin.lock()); // lock ONCE
+
+    let is_terminal = std::io::stdin().is_terminal();
+
     if verbose {
         writeln!(out, "Debug mode ON").ok();
     }
@@ -164,21 +174,26 @@ fn main() {
 
     loop {
         // Prompt — flush so the user sees "~ " before blocking on stdin.
-        write!(out, "~ ").ok();
-        out.flush().ok();
+        if is_terminal {
+            write!(out, "~ ").ok();
+            out.flush().ok();
+        }
 
         line.clear();
 
-        match std::io::stdin().read_line(&mut line) {
+        match stdin.read_line(&mut line) {
             Ok(0) => break,
             Ok(_) => {}
-            Err(e) => { eprintln!("Error: {e}"); break; }
+            Err(e) => {
+                eprintln!("Error: {e}");
+                break;
+            }
         }
-        
+
         if line.capacity() > 512 {
             line.shrink_to(128);
         }
-        
+
         let expression = line.trim();
 
         if matches!(expression, "quit" | "exit" | ":q") {
@@ -214,8 +229,9 @@ fn main() {
                 writeln!(out).ok();
             }
         }
-
-        writeln!(out).ok();
-        out.flush().ok();
+        if is_terminal {
+            writeln!(out).ok();
+            out.flush().ok();
+        }
     }
 }

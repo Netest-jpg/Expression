@@ -27,11 +27,20 @@ fn fnv1a_update(hash: u64, byte: u8) -> u64 {
 const fn build_ident_table() -> [bool; 256] {
     let mut t = [false; 256];
     let mut c = b'a';
-    while c <= b'z' { t[c as usize] = true; c += 1; }
+    while c <= b'z' {
+        t[c as usize] = true;
+        c += 1;
+    }
     let mut c = b'A';
-    while c <= b'Z' { t[c as usize] = true; c += 1; }
+    while c <= b'Z' {
+        t[c as usize] = true;
+        c += 1;
+    }
     let mut c = b'0';
-    while c <= b'9' { t[c as usize] = true; c += 1; }
+    while c <= b'9' {
+        t[c as usize] = true;
+        c += 1;
+    }
     t[b'_' as usize] = true;
     t
 }
@@ -68,12 +77,21 @@ const fn build_dispatch_table() -> [Dispatch; 256] {
     t[b'\n' as usize] = Dispatch::Whitespace;
     t[b'\r' as usize] = Dispatch::Whitespace;
     let mut c = b'0';
-    while c <= b'9' { t[c as usize] = Dispatch::Digit; c += 1; }
+    while c <= b'9' {
+        t[c as usize] = Dispatch::Digit;
+        c += 1;
+    }
     t[b'.' as usize] = Dispatch::Digit;
     let mut c = b'a';
-    while c <= b'z' { t[c as usize] = Dispatch::Alpha; c += 1; }
+    while c <= b'z' {
+        t[c as usize] = Dispatch::Alpha;
+        c += 1;
+    }
     let mut c = b'A';
-    while c <= b'Z' { t[c as usize] = Dispatch::Alpha; c += 1; }
+    while c <= b'Z' {
+        t[c as usize] = Dispatch::Alpha;
+        c += 1;
+    }
     t[b'_' as usize] = Dispatch::Alpha;
     t[b'+' as usize] = Dispatch::Plus;
     t[b'-' as usize] = Dispatch::Minus;
@@ -193,7 +211,10 @@ pub struct Tokenizer<'src> {
 
 impl<'src> Tokenizer<'src> {
     pub fn new(input: &'src str) -> Self {
-        Tokenizer { src: input.as_bytes(), pos: 0 }
+        Tokenizer {
+            src: input.as_bytes(),
+            pos: 0,
+        }
     }
 
     #[inline(always)]
@@ -212,30 +233,60 @@ impl<'src> Tokenizer<'src> {
         tokens.reserve(self.src.len() + 1);
         loop {
             let byte = match self.current() {
-                None => { tokens.push(Token::EndOfFile); break; }
+                None => {
+                    tokens.push(Token::EndOfFile);
+                    break;
+                }
                 Some(b) => b,
             };
 
             match unsafe { *DISPATCH.get_unchecked(byte as usize) } {
-                Dispatch::Whitespace => { self.advance(); }
+                Dispatch::Whitespace => {
+                    self.advance();
+                }
 
                 Dispatch::Digit => {
                     let tok = self.read_number()?;
                     // implicit multiply: "2x" → Number Asterisk Identifier
                     let implicit = self.current().map_or(false, |b| IS_IDENT[b as usize]);
                     tokens.push(tok);
-                    if implicit { tokens.push(Token::Asterisk); }
+                    if implicit {
+                        tokens.push(Token::Asterisk);
+                    }
                 }
 
-                Dispatch::Alpha => { tokens.push(self.read_identifier()); }
+                Dispatch::Alpha => {
+                    tokens.push(self.read_identifier());
+                }
 
-                Dispatch::Plus  => { self.advance(); tokens.push(Token::Plus); }
-                Dispatch::Minus => { self.advance(); tokens.push(Token::Minus); }
-                Dispatch::Star  => { self.advance(); tokens.push(Token::Asterisk); }
-                Dispatch::Slash => { self.advance(); tokens.push(Token::ForwardSlash); }
-                Dispatch::Caret => { self.advance(); tokens.push(Token::Caret); }
-                Dispatch::LParen => { self.advance(); tokens.push(Token::LeftParenthesis); }
-                Dispatch::RParen => { self.advance(); tokens.push(Token::RightParenthesis); }
+                Dispatch::Plus => {
+                    self.advance();
+                    tokens.push(Token::Plus);
+                }
+                Dispatch::Minus => {
+                    self.advance();
+                    tokens.push(Token::Minus);
+                }
+                Dispatch::Star => {
+                    self.advance();
+                    tokens.push(Token::Asterisk);
+                }
+                Dispatch::Slash => {
+                    self.advance();
+                    tokens.push(Token::ForwardSlash);
+                }
+                Dispatch::Caret => {
+                    self.advance();
+                    tokens.push(Token::Caret);
+                }
+                Dispatch::LParen => {
+                    self.advance();
+                    tokens.push(Token::LeftParenthesis);
+                }
+                Dispatch::RParen => {
+                    self.advance();
+                    tokens.push(Token::RightParenthesis);
+                }
 
                 Dispatch::Unknown => {
                     return Err(format!("Unknown character: '{}'", byte as char));
@@ -262,7 +313,10 @@ impl<'src> Tokenizer<'src> {
                 self.advance();
             } else if b == b'.' {
                 let so_far = std::str::from_utf8(&self.src[start as usize..self.pos]).unwrap();
-                return Err(format!("Invalid number: unexpected second '.' in '{}'", so_far));
+                return Err(format!(
+                    "Invalid number: unexpected second '.' in '{}'",
+                    so_far
+                ));
             } else {
                 break;
             }
@@ -272,7 +326,11 @@ impl<'src> Tokenizer<'src> {
             return Err("Invalid number: expected at least one digit".to_string());
         }
 
-        Ok(Token::Number { start, end: self.pos as u32, hash })
+        Ok(Token::Number {
+            start,
+            end: self.pos as u32,
+            hash,
+        })
     }
 
     fn read_identifier(&mut self) -> Token {
@@ -288,7 +346,11 @@ impl<'src> Tokenizer<'src> {
             }
         }
 
-        Token::Identifier { start, end: self.pos as u32, hash }
+        Token::Identifier {
+            start,
+            end: self.pos as u32,
+            hash,
+        }
     }
 }
 

@@ -8,43 +8,43 @@ use crate::lexer::{Token, KW_COS, KW_E, KW_LN, KW_LOG, KW_PI, KW_SIN, KW_SQRT, K
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum TokenKind {
-    Number   = 0,
-    Ident    = 1,
-    Plus     = 2,
-    Minus    = 3,
+    Number = 0,
+    Ident = 1,
+    Plus = 2,
+    Minus = 3,
     Asterisk = 4,
-    Slash    = 5,
-    Caret    = 6,
-    LParen   = 7,
-    RParen   = 8,
-    Eof      = 9,
-    _Count   = 10,
+    Slash = 5,
+    Caret = 6,
+    LParen = 7,
+    RParen = 8,
+    Eof = 9,
+    _Count = 10,
 }
 
 /// Left binding power for each token kind.
 static LBP: [u8; TokenKind::_Count as usize] = {
     let mut t = [0u8; TokenKind::_Count as usize];
-    t[TokenKind::Plus     as usize] = 10;
-    t[TokenKind::Minus    as usize] = 10;
+    t[TokenKind::Plus as usize] = 10;
+    t[TokenKind::Minus as usize] = 10;
     t[TokenKind::Asterisk as usize] = 20;
-    t[TokenKind::Slash    as usize] = 20;
-    t[TokenKind::Caret    as usize] = 30; // right-assoc: rbp = 29
+    t[TokenKind::Slash as usize] = 20;
+    t[TokenKind::Caret as usize] = 30; // right-assoc: rbp = 29
     t
 };
 
 #[inline(always)]
 fn kind_of(tok: &Token) -> TokenKind {
     match tok {
-        Token::Number { .. }         => TokenKind::Number,
-        Token::Identifier { .. }     => TokenKind::Ident,
-        Token::Plus                  => TokenKind::Plus,
-        Token::Minus                 => TokenKind::Minus,
-        Token::Asterisk              => TokenKind::Asterisk,
-        Token::ForwardSlash          => TokenKind::Slash,
-        Token::Caret                 => TokenKind::Caret,
-        Token::LeftParenthesis       => TokenKind::LParen,
-        Token::RightParenthesis      => TokenKind::RParen,
-        Token::EndOfFile             => TokenKind::Eof,
+        Token::Number { .. } => TokenKind::Number,
+        Token::Identifier { .. } => TokenKind::Ident,
+        Token::Plus => TokenKind::Plus,
+        Token::Minus => TokenKind::Minus,
+        Token::Asterisk => TokenKind::Asterisk,
+        Token::ForwardSlash => TokenKind::Slash,
+        Token::Caret => TokenKind::Caret,
+        Token::LeftParenthesis => TokenKind::LParen,
+        Token::RightParenthesis => TokenKind::RParen,
+        Token::EndOfFile => TokenKind::Eof,
     }
 }
 
@@ -70,7 +70,10 @@ pub enum NodeKind<'src> {
     Ln(u32),
     Log(u32),
     Sqrt(u32),
-    Call { hash: u64, arg: u32 },
+    Call {
+        hash: u64,
+        arg: u32,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -155,7 +158,9 @@ impl<'src> Parser<'src> {
         let mut left = self.nud()?;
         loop {
             let lbp = unsafe { *LBP.get_unchecked(self.peek_kind() as usize) };
-            if lbp <= rbp { break; }
+            if lbp <= rbp {
+                break;
+            }
             left = self.led(left)?;
         }
         Ok(left)
@@ -268,26 +273,29 @@ impl<'src> Parser<'src> {
 // -----------------------------------------------------------------------
 pub fn eval(arena: &[Node<'_>], idx: u32) -> f64 {
     match unsafe { &arena.get_unchecked(idx as usize).kind } {
-        NodeKind::Number(v)    => *v,
-        NodeKind::Constant(v)  => *v,
-        NodeKind::Variable(n)  => panic!("unbound variable: {n}"),
+        NodeKind::Number(v) => *v,
+        NodeKind::Constant(v) => *v,
+        NodeKind::Variable(n) => panic!("unbound variable: {n}"),
 
-        NodeKind::Neg(a)       => -eval(arena, *a),
-        NodeKind::Add(a, b)    => eval(arena, *a) + eval(arena, *b),
-        NodeKind::Sub(a, b)    => eval(arena, *a) - eval(arena, *b),
-        NodeKind::Mul(a, b)    => eval(arena, *a) * eval(arena, *b),
-        NodeKind::Div(a, b)    => eval(arena, *a) / eval(arena, *b),
-        NodeKind::Pow(a, b)    => eval(arena, *a).powf(eval(arena, *b)),
+        NodeKind::Neg(a) => -eval(arena, *a),
+        NodeKind::Add(a, b) => eval(arena, *a) + eval(arena, *b),
+        NodeKind::Sub(a, b) => eval(arena, *a) - eval(arena, *b),
+        NodeKind::Mul(a, b) => eval(arena, *a) * eval(arena, *b),
+        NodeKind::Div(a, b) => eval(arena, *a) / eval(arena, *b),
+        NodeKind::Pow(a, b) => eval(arena, *a).powf(eval(arena, *b)),
 
-        NodeKind::Sin(a)       => eval(arena, *a).sin(),
-        NodeKind::Cos(a)       => eval(arena, *a).cos(),
-        NodeKind::Tan(a)       => eval(arena, *a).tan(),
-        NodeKind::Ln(a)        => eval(arena, *a).ln(),
-        NodeKind::Log(a)       => eval(arena, *a).log10(),
-        NodeKind::Sqrt(a)      => eval(arena, *a).sqrt(),
+        NodeKind::Sin(a) => eval(arena, *a).sin(),
+        NodeKind::Cos(a) => eval(arena, *a).cos(),
+        NodeKind::Tan(a) => eval(arena, *a).tan(),
+        NodeKind::Ln(a) => eval(arena, *a).ln(),
+        NodeKind::Log(a) => eval(arena, *a).log10(),
+        NodeKind::Sqrt(a) => eval(arena, *a).sqrt(),
 
         NodeKind::Call { hash, arg } => {
-            panic!("unknown function hash {hash} applied to {:?}", eval(arena, *arg))
+            panic!(
+                "unknown function hash {hash} applied to {:?}",
+                eval(arena, *arg)
+            )
         }
     }
 }
