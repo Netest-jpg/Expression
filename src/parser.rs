@@ -52,12 +52,12 @@ fn kind_of(tok: &Token) -> TokenKind {
 // AST node — flat arena, children are u32 indices.
 // -----------------------------------------------------------------------
 #[derive(Debug, Clone)]
-pub enum NodeKind<'src> {
+pub enum NodeKind {
     Number(f64),
     /// π or e — resolved at parse time.
     Constant(f64),
     /// Variable name as a borrowed slice into the source.
-    Variable(&'src str),
+    Variable(u32,u32),
     Neg(u32),
     Add(u32, u32),
     Sub(u32, u32),
@@ -77,8 +77,8 @@ pub enum NodeKind<'src> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Node<'src> {
-    pub kind: NodeKind<'src>,
+pub struct Node {
+    pub kind: NodeKind,
 }
 
 // -----------------------------------------------------------------------
@@ -89,18 +89,19 @@ pub struct Parser<'src> {
     /// Original source — needed to resolve Number/Identifier byte ranges.
     src: &'src str,
     pos: usize,
-    arena: Vec<Node<'src>>,
+    arena: Vec<Node>,
 }
 
 impl<'src> Parser<'src> {
     /// Create a parser. `tokens` must end with `Token::EndOfFile`.
     /// `src` is the original expression string the tokens were scanned from.
-    pub fn new(tokens: &'src [Token], src: &'src str) -> Self {
+    /// Pass an external `arena` so its allocation can be reused across calls.
+    pub fn new(tokens: &'src [Token], src: &'src str, arena: Vec<Node>) -> Self {
         Parser {
             tokens,
             src,
             pos: 0,
-            arena: Vec::with_capacity(tokens.len()),
+            arena,
         }
     }
 
@@ -109,7 +110,7 @@ impl<'src> Parser<'src> {
     // -------------------------------------------------------------------
 
     #[inline(always)]
-    fn push(&mut self, kind: NodeKind<'src>) -> u32 {
+    fn push(&mut self, kind: NodeKind) -> u32 {
         let idx = self.arena.len() as u32;
         self.arena.push(Node { kind });
         idx
@@ -208,8 +209,7 @@ impl<'src> Parser<'src> {
                     });
                 }
 
-                let name = &self.src[start as usize..end as usize];
-                Ok(self.push(NodeKind::Variable(name)))
+                Ok(self.push(NodeKind::Variable(start, end)))
             }
 
             Token::Minus => {
@@ -259,7 +259,7 @@ impl<'src> Parser<'src> {
     // Public entry point
     // -------------------------------------------------------------------
 
-    pub fn parse(mut self) -> Result<(u32, Vec<Node<'src>>), String> {
+    pub fn parse(mut self) -> Result<(u32, Vec<Node>), String> {
         let root = self.parse_expr(0)?;
         if self.peek_kind() != TokenKind::Eof {
             return Err(format!("unexpected trailing token: {:?}", self.peek()));
@@ -271,11 +271,11 @@ impl<'src> Parser<'src> {
 // -----------------------------------------------------------------------
 // Evaluator
 // -----------------------------------------------------------------------
-pub fn eval(arena: &[Node<'_>], idx: u32) -> f64 {
+pub fn eval(arena: &[Node], idx: u32) -> f64 {
     match unsafe { &arena.get_unchecked(idx as usize).kind } {
         NodeKind::Number(v) => *v,
         NodeKind::Constant(v) => *v,
-        NodeKind::Variable(n) => panic!("unbound variable: {n}"),
+        NodeKind::Variable(start, end) => panic!("unbound variable at [{start}..{end}]"),
 
         NodeKind::Neg(a) => -eval(arena, *a),
         NodeKind::Add(a, b) => eval(arena, *a) + eval(arena, *b),
@@ -311,7 +311,7 @@ mod tests {
     fn run(src: &str) -> f64 {
         let mut tokens = Vec::new();
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
-        let (root, arena) = Parser::new(&tokens, src).parse().unwrap();
+        let (root, arena) = Parser::new(&tokens, src, Vec::new()).parse().unwrap();
         eval(&arena, root)
     }
 
@@ -385,7 +385,7 @@ mod tests {
     fn test_arena_layout() {
         let mut tokens = Vec::new();
         Tokenizer::new("1+2*3").tokenize(&mut tokens).unwrap();
-        let (root, arena) = Parser::new(&tokens, "1+2*3").parse().unwrap();
+        let (root, arena) = Parser::new(&tokens, "1+2*3", Vec::new()).parse().unwrap();
         assert!((root as usize) < arena.len());
     }
 

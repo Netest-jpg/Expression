@@ -68,7 +68,7 @@ fn write_tokens<W: Write>(
 }
 
 /// Write a single node kind in compact form.
-fn write_node_compact<W: Write>(out: &mut W, kind: &NodeKind<'_>) -> std::io::Result<()> {
+fn write_node_compact<W: Write>(out: &mut W, kind: &NodeKind, src: &str) -> std::io::Result<()> {
     match kind {
         NodeKind::Number(v) => {
             if v.fract() == 0.0 && v.abs() < 1e15 {
@@ -86,7 +86,7 @@ fn write_node_compact<W: Write>(out: &mut W, kind: &NodeKind<'_>) -> std::io::Re
                 write!(out, "{v}")
             }
         }
-        NodeKind::Variable(name) => write!(out, "{name}"),
+        NodeKind::Variable(start, end) => write!(out, "{}", &src[*start as usize..*end as usize]),
         NodeKind::Neg(a) => write!(out, "-(n{a})"),
         NodeKind::Add(a, b) => write!(out, "n{a} + n{b}"),
         NodeKind::Sub(a, b) => write!(out, "n{a} - n{b}"),
@@ -104,11 +104,11 @@ fn write_node_compact<W: Write>(out: &mut W, kind: &NodeKind<'_>) -> std::io::Re
 }
 
 /// Write a single node kind in verbose form.
-fn write_node_verbose<W: Write>(out: &mut W, kind: &NodeKind<'_>) -> std::io::Result<()> {
+fn write_node_verbose<W: Write>(out: &mut W, kind: &NodeKind, src: &str) -> std::io::Result<()> {
     match kind {
         NodeKind::Number(v) => write!(out, "Number({v})"),
         NodeKind::Constant(v) => write!(out, "Constant({v})"),
-        NodeKind::Variable(name) => write!(out, "Variable({name:?})"),
+        NodeKind::Variable(start, end) => write!(out, "Variable({:?})", &src[*start as usize..*end as usize]),
         NodeKind::Neg(c) => write!(out, "Neg(n{c})"),
         NodeKind::Add(l, r) => write!(out, "Add(n{l}, n{r})"),
         NodeKind::Sub(l, r) => write!(out, "Sub(n{l}, n{r})"),
@@ -129,16 +129,17 @@ fn write_node_verbose<W: Write>(out: &mut W, kind: &NodeKind<'_>) -> std::io::Re
 fn write_arena<W: Write>(
     out: &mut W,
     root: u32,
-    arena: &[Node<'_>],
+    arena: &[Node],
+    src: &str,
     verbose: bool,
 ) -> std::io::Result<()> {
     write!(out, "AST root: n{root}\nAST arena:")?;
     for (i, node) in arena.iter().enumerate() {
         write!(out, "\n  n{i}: ")?;
         if verbose {
-            write_node_verbose(out, &node.kind)?;
+            write_node_verbose(out, &node.kind, src)?;
         } else {
-            write_node_compact(out, &node.kind)?;
+            write_node_compact(out, &node.kind, src)?;
         }
     }
     Ok(())
@@ -169,8 +170,9 @@ fn main() {
     writeln!(out).ok();
 
     let mut line = String::with_capacity(64);
-    // tokens lives outside the loop: Vec capacity reused every iteration.
+    // tokens and arena live outside the loop: Vec capacity reused every iteration.
     let mut tokens: Vec<Token> = Vec::new();
+    let mut arena: Vec<Node> = Vec::new();
 
     loop {
         // Prompt — flush so the user sees "~ " before blocking on stdin.
@@ -218,15 +220,17 @@ fn main() {
         writeln!(out).ok();
         writeln!(out).ok();
 
-        // Parse — passes `expression` so the parser can resolve slices.
-        match Parser::new(&tokens, expression).parse() {
+        // Parse — hand arena in, get it back with nodes cleared & refilled.
+        arena.clear();
+        match Parser::new(&tokens, expression, std::mem::take(&mut arena)).parse() {
             Err(e) => {
                 eprintln!("Error: {e}");
                 writeln!(out).ok();
             }
-            Ok((root, arena)) => {
-                write_arena(&mut out, root, &arena, verbose).ok();
+            Ok((root, returned_arena)) => {
+                write_arena(&mut out, root, &returned_arena, expression, verbose).ok();
                 writeln!(out).ok();
+                arena = returned_arena; // reclaim the allocation
             }
         }
         if is_terminal {
