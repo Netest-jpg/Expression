@@ -150,8 +150,7 @@ fn main() {
     // Single BufWriter wrapping stdout — flushed explicitly at prompt and
     // at the end of each iteration. Keeps all small writes off the heap.
     let stdout = std::io::stdout();
-    let mut out = BufWriter::new(stdout.lock());
-
+    let mut out = BufWriter::with_capacity(1<<16, stdout.lock());
     if verbose {
         writeln!(out, "Debug mode ON").ok();
     }
@@ -168,10 +167,6 @@ fn main() {
         write!(out, "~ ").ok();
         out.flush().ok();
 
-        let threshold_capacity = 512;
-        if line.capacity() > threshold_capacity {
-            line.shrink_to(128);
-        }
         line.clear();
 
         match std::io::stdin().read_line(&mut line) {
@@ -179,7 +174,11 @@ fn main() {
             Ok(_) => {}
             Err(e) => { eprintln!("Error: {e}"); break; }
         }
-
+        
+        if line.capacity() > 512 {
+            line.shrink_to(128);
+        }
+        
         let expression = line.trim();
 
         if matches!(expression, "quit" | "exit" | ":q") {
