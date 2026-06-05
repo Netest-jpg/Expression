@@ -7,7 +7,7 @@ use std::io::{BufRead, BufWriter, Write};
 use zmij::Buffer as DtoaBuffer;
 
 use lexer::{Token, Tokenizer};
-use parser::{Node, NodeKind, Parser};
+use parser::{Node, NodeKind, Parser, VarStore, eval_assign};
 
 // #[global_allocator]
 // static ALLOC: dhat::Alloc = dhat::Alloc;
@@ -52,6 +52,7 @@ fn write_tokens<W: Write>(
                     Token::Caret => "^",
                     Token::LeftParenthesis => "(",
                     Token::RightParenthesis => ")",
+                    Token::Equals => "=",
                     _ => unreachable!(),
                 };
                 if verbose {
@@ -86,8 +87,9 @@ fn write_node_compact<W: Write>(out: &mut W, kind: &NodeKind, src: &str) -> std:
                 write!(out, "{}", buf.format(*v))
             }
         }
-        NodeKind::Variable(start, end) => write!(out, "{}", &src[*start as usize..*end as usize]),
+        NodeKind::Variable(start, end, _) => write!(out, "{}", &src[*start as usize..*end as usize]),
         NodeKind::Neg(a) => write!(out, "-(n{a})"),
+        NodeKind::Assign(a, b) => write!(out, "n{a} = n{b}"),
         NodeKind::Add(a, b) => write!(out, "n{a} + n{b}"),
         NodeKind::Sub(a, b) => write!(out, "n{a} - n{b}"),
         NodeKind::Mul(a, b) => write!(out, "n{a} * n{b}"),
@@ -108,9 +110,10 @@ fn write_node_verbose<W: Write>(out: &mut W, kind: &NodeKind, src: &str) -> std:
     match kind {
         NodeKind::Number(v) => write!(out, "Number({v})"),
         NodeKind::Constant(v) => write!(out, "Constant({v})"),
-        NodeKind::Variable(start, end) => {
+        NodeKind::Variable(start, end, _) => {
             write!(out, "Variable({:?})", &src[*start as usize..*end as usize])
         }
+        NodeKind::Assign(l, r) => write!(out, "Assign(n{l}, n{r})"),
         NodeKind::Neg(c) => write!(out, "Neg(n{c})"),
         NodeKind::Add(l, r) => write!(out, "Add(n{l}, n{r})"),
         NodeKind::Sub(l, r) => write!(out, "Sub(n{l}, n{r})"),
@@ -177,6 +180,7 @@ fn main() {
     // tokens and arena live outside the loop: Vec capacity reused every iteration.
     let mut tokens: Vec<Token> = Vec::new();
     let mut arena: Vec<Node> = Vec::new();
+    let mut vars = VarStore::new();
 
     loop {
         if is_terminal {
@@ -242,6 +246,29 @@ fn main() {
                 if should_print {
                     write_arena(&mut out, root, &arena, expression, verbose).ok();
                     writeln!(out).ok();
+                }
+                match eval_assign(&arena, root, &mut vars) {
+                    Ok((value, assigned_hash)) => {
+                        if should_print {
+                            if let Some(_h) = assigned_hash {
+                                // Find the variable name from the lhs Variable node.
+                                // Root is Assign(lhs, rhs); lhs is a Variable node.
+                                if let parser::NodeKind::Assign(lhs, _) = &arena[root as usize].kind {
+                                    if let parser::NodeKind::Variable(start, end, _) =
+                                        arena[*lhs as usize].kind
+                                    {
+                                        let name = &expression[start as usize..end as usize];
+                                        writeln!(out, "  {name} = {value}").ok();
+                                    }
+                                }
+                            } else {
+                                writeln!(out, "  = {value}").ok();
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Error: {e}");
+                    }
                 }
             }
         }

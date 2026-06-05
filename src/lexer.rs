@@ -59,6 +59,7 @@ enum Dispatch {
     Caret,
     LParen,
     RParen,
+    Equals,
     Unknown,
 }
 
@@ -92,6 +93,7 @@ const fn build_dispatch_table() -> [Dispatch; 256] {
     t[b'^' as usize] = Dispatch::Caret;
     t[b'(' as usize] = Dispatch::LParen;
     t[b')' as usize] = Dispatch::RParen;
+    t[b'=' as usize] = Dispatch::Equals;
     t
 }
 static DISPATCH: [Dispatch; 256] = build_dispatch_table();
@@ -126,6 +128,7 @@ pub enum Token {
     Caret,
     LeftParenthesis,
     RightParenthesis,
+    Equals,
     EndOfFile,
 }
 
@@ -175,6 +178,7 @@ impl std::fmt::Debug for Token {
             Token::Caret => write!(f, "Caret"),
             Token::LeftParenthesis => write!(f, "LeftParenthesis"),
             Token::RightParenthesis => write!(f, "RightParenthesis"),
+            Token::Equals => write!(f, "Equals"),
             Token::EndOfFile => write!(f, "EndOfFile"),
         }
     }
@@ -270,6 +274,10 @@ impl<'src> Tokenizer<'src> {
                 Dispatch::RParen => {
                     self.advance();
                     tokens.push(Token::RightParenthesis);
+                }
+                Dispatch::Equals => {
+                    self.advance();
+                    tokens.push(Token::Equals);
                 }
 
                 Dispatch::Unknown => {

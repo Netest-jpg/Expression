@@ -16,11 +16,13 @@ enum TokenKind {
     LParen = 7,
     RParen = 8,
     Eof = 9,
-    _Count = 10,
+    Equals = 10,
+    _Count = 11,
 }
 
 static LBP: [u8; TokenKind::_Count as usize] = {
     let mut t = [0u8; TokenKind::_Count as usize];
+    t[TokenKind::Equals as usize] = 5; // lowest infix; right-assoc: rbp = 4
     t[TokenKind::Plus as usize] = 10;
     t[TokenKind::Minus as usize] = 10;
     t[TokenKind::Asterisk as usize] = 20;
@@ -41,6 +43,7 @@ fn kind_of(tok: &Token) -> TokenKind {
         Token::Caret => TokenKind::Caret,
         Token::LeftParenthesis => TokenKind::LParen,
         Token::RightParenthesis => TokenKind::RParen,
+        Token::Equals => TokenKind::Equals,
         Token::EndOfFile => TokenKind::Eof,
     }
 }
@@ -53,14 +56,16 @@ pub enum NodeKind {
     Number(f64),
     /// π or e — resolved at parse time.
     Constant(f64),
-    /// Variable name stored as byte offsets into the source string.
-    Variable(u32, u32),
+    /// Variable name stored as byte offsets + precomputed FNV-1a hash.
+    Variable(u32, u32, u64),
     Neg(u32),
     Add(u32, u32),
     Sub(u32, u32),
     Mul(u32, u32),
     Div(u32, u32),
     Pow(u32, u32),
+    /// lhs must be a Variable node index; rhs is the value expression.
+    Assign(u32, u32),
     Sin(u32),
     Cos(u32),
     Tan(u32),
@@ -197,7 +202,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                     });
                 }
 
-                Ok(self.push(NodeKind::Variable(start, end)))
+                Ok(self.push(NodeKind::Variable(start, end, hash)))
             }
 
             Token::Minus => {
@@ -219,6 +224,15 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     fn led(&mut self, left: u32) -> Result<u32, String> {
         let tok = self.advance();
         match tok {
+            Token::Equals => {
+                // Validate lhs is a plain variable, not an expression.
+                match self.arena[left as usize].kind {
+                    NodeKind::Variable(_, _, _) => {}
+                    _ => return Err("left-hand side of '=' must be a variable name".to_string()),
+                }
+                let right = self.parse_expr(4)?; // rbp=4 → right-associative
+                Ok(self.push(NodeKind::Assign(left, right)))
+            }
             Token::Plus => {
                 let right = self.parse_expr(10)?;
                 Ok(self.push(NodeKind::Add(left, right)))
@@ -259,32 +273,121 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     }
 }
 
-pub fn eval(arena: &[Node], idx: u32) -> f64 {
-    match unsafe { &arena.get_unchecked(idx as usize).kind } {
-        NodeKind::Number(v) => *v,
-        NodeKind::Constant(v) => *v,
-        NodeKind::Variable(start, end) => panic!("unbound variable at [{start}..{end}]"),
+// -----------------------------------------------------------------------
+// Variable store — linear scan over (hash, value) pairs.
+//
+// Up to 64 bindings fit comfortably; the FNV-1a hash (already computed by
+// the lexer) means lookup never touches the source string.
+// -----------------------------------------------------------------------
+pub const VAR_STORE_LIMIT: usize = 64;
 
-        NodeKind::Neg(a) => -eval(arena, *a),
-        NodeKind::Add(a, b) => eval(arena, *a) + eval(arena, *b),
-        NodeKind::Sub(a, b) => eval(arena, *a) - eval(arena, *b),
-        NodeKind::Mul(a, b) => eval(arena, *a) * eval(arena, *b),
-        NodeKind::Div(a, b) => eval(arena, *a) / eval(arena, *b),
-        NodeKind::Pow(a, b) => eval(arena, *a).powf(eval(arena, *b)),
+pub struct VarStore {
+    entries: Vec<(u64, f64)>, // (name hash, value)
+}
 
-        NodeKind::Sin(a) => eval(arena, *a).sin(),
-        NodeKind::Cos(a) => eval(arena, *a).cos(),
-        NodeKind::Tan(a) => eval(arena, *a).tan(),
-        NodeKind::Ln(a) => eval(arena, *a).ln(),
-        NodeKind::Log(a) => eval(arena, *a).log10(),
-        NodeKind::Sqrt(a) => eval(arena, *a).sqrt(),
-
-        NodeKind::Call { hash, arg } => {
-            panic!(
-                "unknown function hash {hash} applied to {:?}",
-                eval(arena, *arg)
-            )
+impl VarStore {
+    pub fn new() -> Self {
+        VarStore {
+            entries: Vec::with_capacity(16),
         }
+    }
+
+    #[inline(always)]
+    pub fn get(&self, hash: u64) -> Option<f64> {
+        self.entries
+            .iter()
+            .find(|(h, _)| *h == hash)
+            .map(|(_, v)| *v)
+    }
+
+    /// Insert or update. Returns Err if the store is full and the key is new.
+    #[inline(always)]
+    pub fn set(&mut self, hash: u64, value: f64) -> Result<(), String> {
+        if let Some(entry) = self.entries.iter_mut().find(|(h, _)| *h == hash) {
+            entry.1 = value;
+            return Ok(());
+        }
+        if self.entries.len() >= VAR_STORE_LIMIT {
+            return Err(format!(
+                "variable limit ({VAR_STORE_LIMIT}) reached; clear some variables first"
+            ));
+        }
+        self.entries.push((hash, value));
+        Ok(())
+    }
+
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
+}
+
+pub fn eval(arena: &[Node], idx: u32, vars: &VarStore) -> Result<f64, String> {
+    match unsafe { &arena.get_unchecked(idx as usize).kind } {
+        NodeKind::Number(v) => Ok(*v),
+        NodeKind::Constant(v) => Ok(*v),
+        NodeKind::Variable(start, end, hash) => vars
+            .get(*hash)
+            .ok_or_else(|| format!("unbound variable at [{start}..{end}]")),
+
+        NodeKind::Assign(lhs, rhs) => {
+            // lhs is guaranteed to be a Variable node (enforced in led).
+            let value = eval(arena, *rhs, vars)?;
+            // We need a mutable vars but eval takes &VarStore — callers that
+            // need assignment must call eval_assign instead. This arm is
+            // unreachable through the normal eval path; if reached it means
+            // the caller passed an Assign root to plain eval.
+            let _ = lhs;
+            // Surface a clear message rather than a cryptic panic.
+            Err(format!(
+                "assignment expression must be evaluated with eval_assign (value would be {value})"
+            ))
+        }
+
+        NodeKind::Neg(a) => Ok(-eval(arena, *a, vars)?),
+        NodeKind::Add(a, b) => Ok(eval(arena, *a, vars)? + eval(arena, *b, vars)?),
+        NodeKind::Sub(a, b) => Ok(eval(arena, *a, vars)? - eval(arena, *b, vars)?),
+        NodeKind::Mul(a, b) => Ok(eval(arena, *a, vars)? * eval(arena, *b, vars)?),
+        NodeKind::Div(a, b) => Ok(eval(arena, *a, vars)? / eval(arena, *b, vars)?),
+        NodeKind::Pow(a, b) => Ok(eval(arena, *a, vars)?.powf(eval(arena, *b, vars)?)),
+
+        NodeKind::Sin(a) => Ok(eval(arena, *a, vars)?.sin()),
+        NodeKind::Cos(a) => Ok(eval(arena, *a, vars)?.cos()),
+        NodeKind::Tan(a) => Ok(eval(arena, *a, vars)?.tan()),
+        NodeKind::Ln(a) => Ok(eval(arena, *a, vars)?.ln()),
+        NodeKind::Log(a) => Ok(eval(arena, *a, vars)?.log10()),
+        NodeKind::Sqrt(a) => Ok(eval(arena, *a, vars)?.sqrt()),
+
+        NodeKind::Call { hash, arg } => Err(format!(
+            "unknown function hash {hash} applied to {:?}",
+            eval(arena, *arg, vars)?
+        )),
+    }
+}
+
+/// Evaluate a tree that may be rooted at an Assign node.
+/// Returns the resulting value and (for assignments) the variable name hash.
+pub fn eval_assign(
+    arena: &[Node],
+    idx: u32,
+    vars: &mut VarStore,
+) -> Result<(f64, Option<u64>), String> {
+    match &arena[idx as usize].kind {
+        NodeKind::Assign(lhs, rhs) => {
+            let hash = var_hash(arena, *lhs);
+            let value = eval(arena, *rhs, vars)?;
+            vars.set(hash, value)?;
+            Ok((value, Some(hash)))
+        }
+        _ => Ok((eval(arena, idx, vars)?, None)),
+    }
+}
+
+/// Extract the FNV hash from a Variable node (panics if not Variable).
+#[inline(always)]
+fn var_hash(arena: &[Node], idx: u32) -> u64 {
+    match arena[idx as usize].kind {
+        NodeKind::Variable(_, _, hash) => hash,
+        _ => panic!("var_hash called on non-Variable node"),
     }
 }
 
@@ -296,9 +399,10 @@ mod tests {
     fn run(src: &str) -> f64 {
         let mut tokens = Vec::new();
         let mut arena = Vec::new();
+        let vars = VarStore::new();
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
-        eval(&arena, root)
+        eval(&arena, root, &vars).unwrap()
     }
 
     #[test]
@@ -374,6 +478,57 @@ mod tests {
         Tokenizer::new("1+2*3").tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, "1+2*3", &mut arena).parse().unwrap();
         assert!((root as usize) < arena.len());
+    }
+
+    #[test]
+    fn test_assignment_basic() {
+        let mut tokens = Vec::new();
+        let mut arena = Vec::new();
+        let mut vars = VarStore::new();
+        Tokenizer::new("x=42").tokenize(&mut tokens).unwrap();
+        let root = Parser::new(&tokens, "x=42", &mut arena).parse().unwrap();
+        let (val, hash) = eval_assign(&arena, root, &mut vars).unwrap();
+        assert!((val - 42.0).abs() < 1e-10);
+        assert!(hash.is_some());
+    }
+
+    #[test]
+    fn test_assignment_then_use() {
+        let mut tokens = Vec::new();
+        let mut arena = Vec::new();
+        let mut vars = VarStore::new();
+        // x = 3
+        Tokenizer::new("x=3").tokenize(&mut tokens).unwrap();
+        let root = Parser::new(&tokens, "x=3", &mut arena).parse().unwrap();
+        eval_assign(&arena, root, &mut vars).unwrap();
+        // x*x
+        arena.clear();
+        Tokenizer::new("x*x").tokenize(&mut tokens).unwrap();
+        let root = Parser::new(&tokens, "x*x", &mut arena).parse().unwrap();
+        let val = eval(&arena, root, &vars).unwrap();
+        assert!((val - 9.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_assignment_lhs_must_be_variable() {
+        let mut tokens = Vec::new();
+        let mut arena = Vec::new();
+        Tokenizer::new("1+2=5").tokenize(&mut tokens).unwrap();
+        let result = Parser::new(&tokens, "1+2=5", &mut arena).parse();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_varstore_limit() {
+        let mut vars = VarStore::new();
+        for i in 0..VAR_STORE_LIMIT {
+            vars.set(i as u64, i as f64).unwrap();
+        }
+        // One more new key must fail.
+        let err = vars.set(VAR_STORE_LIMIT as u64 + 1, 1.0);
+        assert!(err.is_err());
+        // Updating an existing key must still succeed even when full.
+        vars.set(0u64, 99.0).unwrap();
     }
 
     #[test]
