@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+use fast_float2 as fast_float;
 
 const FNV_OFFSET_BASIS: u64 = 14695981039346656037;
 const FNV_PRIME: u64 = 1099511628211;
@@ -147,11 +148,13 @@ impl Token {
     }
 
     /// Parse the numeric value on demand.
+    #[inline(always)]
     pub fn as_f64(&self, src: &str) -> f64 {
-        self.raw(src).parse().expect("invalid number")
+        fast_float::parse::<f64, _>(self.raw(src)).expect("invalid number")
     }
 
     /// Returns the identifier name, or None.
+    #[inline(always)]
     pub fn as_ident<'src>(&self, src: &'src str) -> Option<&'src str> {
         match self {
             Token::Identifier { start, end, .. } => Some(&src[*start as usize..*end as usize]),
@@ -277,6 +280,7 @@ impl<'src> Tokenizer<'src> {
         Ok(())
     }
 
+    #[inline(always)]
     fn read_number(&mut self) -> Result<Token, String> {
         let start = self.pos as u32;
         let mut hash = FNV_OFFSET_BASIS;
@@ -314,6 +318,7 @@ impl<'src> Tokenizer<'src> {
         })
     }
 
+    #[inline(always)]
     fn read_identifier(&mut self) -> Token {
         let start = self.pos as u32;
         let mut hash = FNV_OFFSET_BASIS;

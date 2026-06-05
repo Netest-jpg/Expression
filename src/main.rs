@@ -4,6 +4,8 @@ mod parser;
 use std::io::IsTerminal;
 use std::io::{BufRead, BufWriter, Write};
 
+use zmij::Buffer as DtoaBuffer;
+
 use lexer::{Token, Tokenizer};
 use parser::{Node, NodeKind, Parser};
 
@@ -70,7 +72,8 @@ fn write_node_compact<W: Write>(out: &mut W, kind: &NodeKind, src: &str) -> std:
             if v.fract() == 0.0 && v.abs() < 1e15 {
                 write!(out, "{}", *v as i64)
             } else {
-                write!(out, "{v}")
+                let mut buf = DtoaBuffer::new();
+                write!(out, "{}", buf.format(*v))
             }
         }
         NodeKind::Constant(v) => {
@@ -79,7 +82,8 @@ fn write_node_compact<W: Write>(out: &mut W, kind: &NodeKind, src: &str) -> std:
             } else if (v - std::f64::consts::E).abs() < 1e-14 {
                 write!(out, "e")
             } else {
-                write!(out, "{v}")
+                let mut buf = DtoaBuffer::new();
+                write!(out, "{}", buf.format(*v))
             }
         }
         NodeKind::Variable(start, end) => write!(out, "{}", &src[*start as usize..*end as usize]),

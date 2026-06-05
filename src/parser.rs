@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use crate::lexer::{Token, KW_COS, KW_E, KW_LN, KW_LOG, KW_PI, KW_SIN, KW_SQRT, KW_TAN};
+use fast_float2 as fast_float;
 
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -95,6 +96,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     /// `src` is the original expression string the tokens were scanned from.
     /// `arena` must already be cleared by the caller; its allocation is
     /// preserved across both Ok and Err returns.
+    #[inline(always)]
     pub fn new(tokens: &'src [Token], src: &'src str, arena: &'arena mut Vec<Node>) -> Self {
         Parser {
             tokens,
@@ -160,8 +162,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         match tok {
             Token::Number { start, end, .. } => {
                 let raw = &self.src[start as usize..end as usize];
-                let v = raw
-                    .parse::<f64>()
+                let v = fast_float::parse::<f64, _>(raw)
                     .map_err(|e| format!("invalid number '{}': {}", raw, e))?;
                 Ok(self.push(NodeKind::Number(v)))
             }
