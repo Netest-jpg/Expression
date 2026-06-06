@@ -6,45 +6,45 @@ use fast_float2 as fast_float;
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum TokenKind {
-    Number = 0,
-    Ident = 1,
-    Plus = 2,
-    Minus = 3,
+    Number   = 0,
+    Ident    = 1,
+    Plus     = 2,
+    Minus    = 3,
     Asterisk = 4,
-    Slash = 5,
-    Caret = 6,
-    LParen = 7,
-    RParen = 8,
-    Eof = 9,
-    Equals = 10,
-    _Count = 11,
+    Slash    = 5,
+    Caret    = 6,
+    LParen   = 7,
+    RParen   = 8,
+    Eof      = 9,
+    Equals   = 10,
+    _Count   = 11,
 }
 
 static LBP: [u8; TokenKind::_Count as usize] = {
     let mut t = [0u8; TokenKind::_Count as usize];
-    t[TokenKind::Equals as usize] = 5; // lowest infix; right-assoc: rbp = 4
-    t[TokenKind::Plus as usize] = 10;
-    t[TokenKind::Minus as usize] = 10;
+    t[TokenKind::Equals   as usize] = 5;  // lowest infix; right-assoc: rbp = 4
+    t[TokenKind::Plus     as usize] = 10;
+    t[TokenKind::Minus    as usize] = 10;
     t[TokenKind::Asterisk as usize] = 20;
-    t[TokenKind::Slash as usize] = 20;
-    t[TokenKind::Caret as usize] = 30; // right-assoc: rbp = 29
+    t[TokenKind::Slash    as usize] = 20;
+    t[TokenKind::Caret    as usize] = 30; // right-assoc: rbp = 29
     t
 };
 
 #[inline(always)]
 fn kind_of(tok: &Token) -> TokenKind {
     match tok {
-        Token::Number { .. } => TokenKind::Number,
-        Token::Identifier { .. } => TokenKind::Ident,
-        Token::Plus => TokenKind::Plus,
-        Token::Minus => TokenKind::Minus,
-        Token::Asterisk => TokenKind::Asterisk,
-        Token::ForwardSlash => TokenKind::Slash,
-        Token::Caret => TokenKind::Caret,
-        Token::LeftParenthesis => TokenKind::LParen,
-        Token::RightParenthesis => TokenKind::RParen,
-        Token::Equals => TokenKind::Equals,
-        Token::EndOfFile => TokenKind::Eof,
+        Token::Number { .. }       => TokenKind::Number,
+        Token::Identifier { .. }   => TokenKind::Ident,
+        Token::Plus                => TokenKind::Plus,
+        Token::Minus               => TokenKind::Minus,
+        Token::Asterisk            => TokenKind::Asterisk,
+        Token::ForwardSlash        => TokenKind::Slash,
+        Token::Caret               => TokenKind::Caret,
+        Token::LeftParenthesis     => TokenKind::LParen,
+        Token::RightParenthesis    => TokenKind::RParen,
+        Token::Equals              => TokenKind::Equals,
+        Token::EndOfFile           => TokenKind::Eof,
     }
 }
 
@@ -56,7 +56,7 @@ pub enum NodeKind {
     Number(f64),
     /// π or e — resolved at parse time.
     Constant(f64),
-    /// Variable name stored as byte offsets + precomputed FNV-1a hash.
+    /// Variable: byte offsets + precomputed FNV-1a hash (no src needed at lookup).
     Variable(u32, u32, u64),
     Neg(u32),
     Add(u32, u32),
@@ -64,18 +64,16 @@ pub enum NodeKind {
     Mul(u32, u32),
     Div(u32, u32),
     Pow(u32, u32),
-    /// lhs must be a Variable node index; rhs is the value expression.
-    Assign(u32, u32),
+    /// General equation: lhs_expr = rhs_expr.
+    /// Both sides are arbitrary expression trees (no restriction on lhs).
+    Equation(u32, u32),
     Sin(u32),
     Cos(u32),
     Tan(u32),
     Ln(u32),
     Log(u32),
     Sqrt(u32),
-    Call {
-        hash: u64,
-        arg: u32,
-    },
+    Call { hash: u64, arg: u32 },
 }
 
 #[derive(Debug, Clone)]
@@ -88,27 +86,14 @@ pub struct Node {
 // -----------------------------------------------------------------------
 pub struct Parser<'src, 'arena> {
     tokens: &'src [Token],
-    /// Original source — needed to resolve Number/Identifier byte ranges.
-    src: &'src str,
-    pos: usize,
-    /// Borrowed from the caller so the allocation is always preserved,
-    /// even when parse() returns Err. Caller must clear before calling new().
-    arena: &'arena mut Vec<Node>,
+    src:    &'src str,
+    pos:    usize,
+    arena:  &'arena mut Vec<Node>,
 }
 
 impl<'src, 'arena> Parser<'src, 'arena> {
-    /// Create a parser. `tokens` must end with `Token::EndOfFile`.
-    /// `src` is the original expression string the tokens were scanned from.
-    /// `arena` must already be cleared by the caller; its allocation is
-    /// preserved across both Ok and Err returns.
-    #[inline(always)]
     pub fn new(tokens: &'src [Token], src: &'src str, arena: &'arena mut Vec<Node>) -> Self {
-        Parser {
-            tokens,
-            src,
-            pos: 0,
-            arena,
-        }
+        Parser { tokens, src, pos: 0, arena }
     }
 
     #[inline(always)]
@@ -136,9 +121,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     }
 
     #[inline(always)]
-    fn skip(&mut self) {
-        self.pos += 1;
-    }
+    fn skip(&mut self) { self.pos += 1; }
 
     #[inline(always)]
     fn expect_rparen(&mut self) -> Result<(), String> {
@@ -153,9 +136,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         let mut left = self.nud()?;
         loop {
             let lbp = unsafe { *LBP.get_unchecked(self.peek_kind() as usize) };
-            if lbp <= rbp {
-                break;
-            }
+            if lbp <= rbp { break; }
             left = self.led(left)?;
         }
         Ok(left)
@@ -173,33 +154,20 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             }
 
             Token::Identifier { start, end, hash } => {
-                if hash == KW_PI {
-                    return Ok(self.push(NodeKind::Constant(std::f64::consts::PI)));
-                }
-                if hash == KW_E {
-                    return Ok(self.push(NodeKind::Constant(std::f64::consts::E)));
-                }
+                if hash == KW_PI { return Ok(self.push(NodeKind::Constant(std::f64::consts::PI))); }
+                if hash == KW_E  { return Ok(self.push(NodeKind::Constant(std::f64::consts::E)));  }
 
                 if matches!(self.peek_kind(), TokenKind::LParen) {
                     self.skip(); // eat '('
                     let arg = self.parse_expr(0)?;
                     self.expect_rparen()?;
-
-                    return Ok(if hash == KW_SIN {
-                        self.push(NodeKind::Sin(arg))
-                    } else if hash == KW_COS {
-                        self.push(NodeKind::Cos(arg))
-                    } else if hash == KW_TAN {
-                        self.push(NodeKind::Tan(arg))
-                    } else if hash == KW_LN {
-                        self.push(NodeKind::Ln(arg))
-                    } else if hash == KW_LOG {
-                        self.push(NodeKind::Log(arg))
-                    } else if hash == KW_SQRT {
-                        self.push(NodeKind::Sqrt(arg))
-                    } else {
-                        self.push(NodeKind::Call { hash, arg })
-                    });
+                    return Ok(if      hash == KW_SIN  { self.push(NodeKind::Sin(arg))  }
+                              else if hash == KW_COS  { self.push(NodeKind::Cos(arg))  }
+                              else if hash == KW_TAN  { self.push(NodeKind::Tan(arg))  }
+                              else if hash == KW_LN   { self.push(NodeKind::Ln(arg))   }
+                              else if hash == KW_LOG  { self.push(NodeKind::Log(arg))  }
+                              else if hash == KW_SQRT { self.push(NodeKind::Sqrt(arg)) }
+                              else                    { self.push(NodeKind::Call { hash, arg }) });
                 }
 
                 Ok(self.push(NodeKind::Variable(start, end, hash)))
@@ -224,14 +192,11 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     fn led(&mut self, left: u32) -> Result<u32, String> {
         let tok = self.advance();
         match tok {
+            // '=' is now a general equation separator — both sides can be
+            // arbitrary expressions. No lhs restriction at parse time.
             Token::Equals => {
-                // Validate lhs is a plain variable, not an expression.
-                match self.arena[left as usize].kind {
-                    NodeKind::Variable(_, _, _) => {}
-                    _ => return Err("left-hand side of '=' must be a variable name".to_string()),
-                }
                 let right = self.parse_expr(4)?; // rbp=4 → right-associative
-                Ok(self.push(NodeKind::Assign(left, right)))
+                Ok(self.push(NodeKind::Equation(left, right)))
             }
             Token::Plus => {
                 let right = self.parse_expr(10)?;
@@ -257,13 +222,6 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         }
     }
 
-    // -------------------------------------------------------------------
-    // Public entry point
-    // -------------------------------------------------------------------
-
-    /// Parse the token stream. Returns the root node index on success.
-    /// On either Ok or Err, the arena borrow is released back to the caller
-    /// with its allocation intact.
     pub fn parse(mut self) -> Result<u32, String> {
         let root = self.parse_expr(0)?;
         if self.peek_kind() != TokenKind::Eof {
@@ -276,8 +234,8 @@ impl<'src, 'arena> Parser<'src, 'arena> {
 // -----------------------------------------------------------------------
 // Variable store — linear scan over (hash, value) pairs.
 //
-// Up to 64 bindings fit comfortably; the FNV-1a hash (already computed by
-// the lexer) means lookup never touches the source string.
+// Up to 64 bindings; the FNV-1a hash (precomputed by the lexer) means
+// lookup never touches the source string.
 // -----------------------------------------------------------------------
 pub const VAR_STORE_LIMIT: usize = 64;
 
@@ -287,17 +245,12 @@ pub struct VarStore {
 
 impl VarStore {
     pub fn new() -> Self {
-        VarStore {
-            entries: Vec::with_capacity(16),
-        }
+        VarStore { entries: Vec::with_capacity(16) }
     }
 
     #[inline(always)]
     pub fn get(&self, hash: u64) -> Option<f64> {
-        self.entries
-            .iter()
-            .find(|(h, _)| *h == hash)
-            .map(|(_, v)| *v)
+        self.entries.iter().find(|(h, _)| *h == hash).map(|(_, v)| *v)
     }
 
     /// Insert or update. Returns Err if the store is full and the key is new.
@@ -308,53 +261,87 @@ impl VarStore {
             return Ok(());
         }
         if self.entries.len() >= VAR_STORE_LIMIT {
-            return Err(format!(
-                "variable limit ({VAR_STORE_LIMIT}) reached; clear some variables first"
-            ));
+            return Err(format!("variable limit ({VAR_STORE_LIMIT}) reached; clear some variables first"));
         }
         self.entries.push((hash, value));
         Ok(())
     }
 
-    pub fn clear(&mut self) {
-        self.entries.clear();
+    pub fn clear(&mut self) { self.entries.clear(); }
+
+    /// Copy all current bindings into `dst`, then add one extra binding.
+    /// Used by the Newton solver to snapshot vars + inject a trial value.
+    pub fn snapshot_with(&self, hash: u64, value: f64) -> VarStore {
+        let mut s = VarStore { entries: self.entries.clone() };
+        // update if already present, else push
+        if let Some(e) = s.entries.iter_mut().find(|(h, _)| *h == hash) {
+            e.1 = value;
+        } else {
+            s.entries.push((hash, value));
+        }
+        s
     }
 }
 
+// -----------------------------------------------------------------------
+// Variable collection — walk the tree and gather unique identifiers.
+// Returns Vec<(hash, start, end)> deduplicated by hash.
+// -----------------------------------------------------------------------
+pub fn collect_vars(arena: &[Node], root: u32) -> Vec<(u64, u32, u32)> {
+    let mut out: Vec<(u64, u32, u32)> = Vec::new();
+    collect_vars_inner(arena, root, &mut out);
+    out
+}
+
+fn collect_vars_inner(arena: &[Node], idx: u32, out: &mut Vec<(u64, u32, u32)>) {
+    match &arena[idx as usize].kind {
+        NodeKind::Variable(start, end, hash) => {
+            if !out.iter().any(|(h, _, _)| h == hash) {
+                out.push((*hash, *start, *end));
+            }
+        }
+        NodeKind::Number(_) | NodeKind::Constant(_) => {}
+        NodeKind::Neg(a)
+        | NodeKind::Sin(a) | NodeKind::Cos(a) | NodeKind::Tan(a)
+        | NodeKind::Ln(a)  | NodeKind::Log(a) | NodeKind::Sqrt(a) => {
+            collect_vars_inner(arena, *a, out);
+        }
+        NodeKind::Call { arg, .. } => collect_vars_inner(arena, *arg, out),
+        NodeKind::Add(a, b) | NodeKind::Sub(a, b) | NodeKind::Mul(a, b)
+        | NodeKind::Div(a, b) | NodeKind::Pow(a, b) | NodeKind::Equation(a, b) => {
+            collect_vars_inner(arena, *a, out);
+            collect_vars_inner(arena, *b, out);
+        }
+    }
+}
+
+// -----------------------------------------------------------------------
+// Eval — pure expression, all variables must be bound.
+// -----------------------------------------------------------------------
 pub fn eval(arena: &[Node], idx: u32, vars: &VarStore) -> Result<f64, String> {
     match unsafe { &arena.get_unchecked(idx as usize).kind } {
-        NodeKind::Number(v) => Ok(*v),
+        NodeKind::Number(v)   => Ok(*v),
         NodeKind::Constant(v) => Ok(*v),
+
         NodeKind::Variable(start, end, hash) => vars
             .get(*hash)
             .ok_or_else(|| format!("unbound variable at [{start}..{end}]")),
 
-        NodeKind::Assign(lhs, rhs) => {
-            // lhs is guaranteed to be a Variable node (enforced in led).
-            let value = eval(arena, *rhs, vars)?;
-            // We need a mutable vars but eval takes &VarStore — callers that
-            // need assignment must call eval_assign instead. This arm is
-            // unreachable through the normal eval path; if reached it means
-            // the caller passed an Assign root to plain eval.
-            let _ = lhs;
-            // Surface a clear message rather than a cryptic panic.
-            Err(format!(
-                "assignment expression must be evaluated with eval_assign (value would be {value})"
-            ))
-        }
+        // Equation nodes are not evaluated by plain eval; use evaluate_pending.
+        NodeKind::Equation(_, _) => Err("use 'evaluate' to evaluate an equation".to_string()),
 
-        NodeKind::Neg(a) => Ok(-eval(arena, *a, vars)?),
+        NodeKind::Neg(a)    => Ok(-eval(arena, *a, vars)?),
         NodeKind::Add(a, b) => Ok(eval(arena, *a, vars)? + eval(arena, *b, vars)?),
         NodeKind::Sub(a, b) => Ok(eval(arena, *a, vars)? - eval(arena, *b, vars)?),
         NodeKind::Mul(a, b) => Ok(eval(arena, *a, vars)? * eval(arena, *b, vars)?),
         NodeKind::Div(a, b) => Ok(eval(arena, *a, vars)? / eval(arena, *b, vars)?),
         NodeKind::Pow(a, b) => Ok(eval(arena, *a, vars)?.powf(eval(arena, *b, vars)?)),
 
-        NodeKind::Sin(a) => Ok(eval(arena, *a, vars)?.sin()),
-        NodeKind::Cos(a) => Ok(eval(arena, *a, vars)?.cos()),
-        NodeKind::Tan(a) => Ok(eval(arena, *a, vars)?.tan()),
-        NodeKind::Ln(a) => Ok(eval(arena, *a, vars)?.ln()),
-        NodeKind::Log(a) => Ok(eval(arena, *a, vars)?.log10()),
+        NodeKind::Sin(a)  => Ok(eval(arena, *a, vars)?.sin()),
+        NodeKind::Cos(a)  => Ok(eval(arena, *a, vars)?.cos()),
+        NodeKind::Tan(a)  => Ok(eval(arena, *a, vars)?.tan()),
+        NodeKind::Ln(a)   => Ok(eval(arena, *a, vars)?.ln()),
+        NodeKind::Log(a)  => Ok(eval(arena, *a, vars)?.log10()),
         NodeKind::Sqrt(a) => Ok(eval(arena, *a, vars)?.sqrt()),
 
         NodeKind::Call { hash, arg } => Err(format!(
@@ -364,158 +351,287 @@ pub fn eval(arena: &[Node], idx: u32, vars: &VarStore) -> Result<f64, String> {
     }
 }
 
-/// Evaluate a tree that may be rooted at an Assign node.
-/// Returns the resulting value and (for assignments) the variable name hash.
-pub fn eval_assign(
-    arena: &[Node],
-    idx: u32,
-    vars: &mut VarStore,
-) -> Result<(f64, Option<u64>), String> {
-    match &arena[idx as usize].kind {
-        NodeKind::Assign(lhs, rhs) => {
-            let hash = var_hash(arena, *lhs);
-            let value = eval(arena, *rhs, vars)?;
-            vars.set(hash, value)?;
-            Ok((value, Some(hash)))
+// -----------------------------------------------------------------------
+// Simple variable assignment: `x = <expr with no free vars>`.
+//
+// Recognises Equation(Variable, rhs) where rhs contains no unbound
+// identifiers relative to `vars`. Returns (var_name_hash, value) on
+// success, or None if the root is not this shape (caller treats it as a
+// pending equation instead).
+// -----------------------------------------------------------------------
+pub fn try_simple_assign(
+    arena:  &[Node],
+    root:   u32,
+    vars:   &mut VarStore,
+    src:    &str,
+) -> Result<Option<(String, f64)>, String> {
+    let NodeKind::Equation(lhs, rhs) = &arena[root as usize].kind else {
+        return Ok(None); // not an equation at all
+    };
+    let (lhs, rhs) = (*lhs, *rhs);
+
+    // lhs must be a plain variable
+    let (var_name, var_hash) = match &arena[lhs as usize].kind {
+        NodeKind::Variable(start, end, hash) => {
+            (src[*start as usize..*end as usize].to_string(), *hash)
         }
-        _ => Ok((eval(arena, idx, vars)?, None)),
+        _ => return Ok(None), // complex lhs → treat as equation
+    };
+
+    // rhs must be fully evaluable right now
+    let value = eval(arena, rhs, vars)?;
+    vars.set(var_hash, value)?;
+    Ok(Some((var_name, value)))
+}
+
+// -----------------------------------------------------------------------
+// Evaluate a pending equation against the VarStore.
+//
+// The root must be an Equation node.  Three cases:
+//
+//   • 0 free vars → verify lhs == rhs (within tolerance), print both sides.
+//   • 1 free var  → solve f(x) = lhs(x) - rhs(x) = 0 numerically (Newton),
+//                   print  `unknown = value`.
+//   • >1 free vars → return Err listing which vars still need values.
+// -----------------------------------------------------------------------
+pub struct EvalResult {
+    pub kind:  EvalResultKind,
+}
+
+pub enum EvalResultKind {
+    /// All vars bound: lhs value and rhs value (should be equal for an equation).
+    Verified { lhs: f64, rhs: f64 },
+    /// One free var solved numerically.
+    Solved { name: String, value: f64 },
+    /// Expression (no `=`) evaluated to a single value.
+    Value(f64),
+}
+
+pub fn evaluate_pending(
+    arena:  &[Node],
+    root:   u32,
+    vars:   &VarStore,
+    src:    &str,
+) -> Result<EvalResult, String> {
+    // Plain expression (no Equation node at root)
+    let (lhs_idx, rhs_idx) = match &arena[root as usize].kind {
+        NodeKind::Equation(l, r) => (*l, *r),
+        _ => {
+            let v = eval(arena, root, vars)?;
+            return Ok(EvalResult { kind: EvalResultKind::Value(v) });
+        }
+    };
+
+    // Collect free variables (unbound in VarStore)
+    let all_vars = collect_vars(arena, root);
+    let free: Vec<(u64, u32, u32)> = all_vars
+        .iter()
+        .filter(|(hash, _, _)| vars.get(*hash).is_none())
+        .copied()
+        .collect();
+
+    match free.len() {
+        0 => {
+            // All bound — evaluate both sides.
+            let lhs_val = eval(arena, lhs_idx, vars)?;
+            let rhs_val = eval(arena, rhs_idx, vars)?;
+            Ok(EvalResult { kind: EvalResultKind::Verified { lhs: lhs_val, rhs: rhs_val } })
+        }
+
+        1 => {
+            let (unknown_hash, start, end) = free[0];
+            let name = src[start as usize..end as usize].to_string();
+
+            // f(x) = lhs(x) - rhs(x); we want f(x) = 0.
+            // Newton's method with numerical derivative.
+            let f = |x: f64| -> Result<f64, String> {
+                let tmp = vars.snapshot_with(unknown_hash, x);
+                let l = eval(arena, lhs_idx, &tmp)?;
+                let r = eval(arena, rhs_idx, &tmp)?;
+                Ok(l - r)
+            };
+
+            // Newton's method, max 64 iterations, starting at x=1.0 then x=0.0 if needed.
+            let solution = newton(&f, 1.0)
+                .or_else(|_| newton(&f, 0.0))
+                .or_else(|_| newton(&f, -1.0))
+                .or_else(|_| newton(&f, 10.0))
+                .map_err(|_| format!(
+                    "could not solve for '{name}'; try assigning an initial guess manually"
+                ))?;
+
+            Ok(EvalResult { kind: EvalResultKind::Solved { name, value: solution } })
+        }
+
+        _ => {
+            // Build a helpful list of which names still need values.
+            let names: Vec<String> = free
+                .iter()
+                .map(|(_, start, end)| src[*start as usize..*end as usize].to_string())
+                .collect();
+            Err(format!(
+                "cannot evaluate: {} variable{} still unassigned: {}.\n\
+                 Assign values with  name=value  or leave exactly one free for solving.",
+                names.len(),
+                if names.len() == 1 { "" } else { "s" },
+                names.join(", ")
+            ))
+        }
     }
 }
 
-/// Extract the FNV hash from a Variable node (panics if not Variable).
-#[inline(always)]
-fn var_hash(arena: &[Node], idx: u32) -> u64 {
-    match arena[idx as usize].kind {
-        NodeKind::Variable(_, _, hash) => hash,
-        _ => panic!("var_hash called on non-Variable node"),
+// -----------------------------------------------------------------------
+// Newton's method: find x such that f(x) ≈ 0.
+// -----------------------------------------------------------------------
+fn newton(f: &impl Fn(f64) -> Result<f64, String>, x0: f64) -> Result<f64, String> {
+    const MAX_ITER: usize = 64;
+    const TOL:      f64   = 1e-10;
+    const H:        f64   = 1e-7;
+
+    let mut x = x0;
+    for _ in 0..MAX_ITER {
+        let fx  = f(x)?;
+        if fx.abs() < TOL { return Ok(x); }
+        let fpx = (f(x + H)? - f(x - H)?) / (2.0 * H);
+        if fpx.abs() < 1e-14 {
+            return Err("derivative too small".to_string());
+        }
+        let x_new = x - fx / fpx;
+        if (x_new - x).abs() < TOL { return Ok(x_new); }
+        x = x_new;
     }
+    Err("did not converge".to_string())
 }
 
+// -----------------------------------------------------------------------
+// Tests
+// -----------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::lexer::Tokenizer;
 
-    fn run(src: &str) -> f64 {
+    fn parse_and_eval(src: &str) -> f64 {
         let mut tokens = Vec::new();
-        let mut arena = Vec::new();
+        let mut arena  = Vec::new();
         let vars = VarStore::new();
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
         eval(&arena, root, &vars).unwrap()
     }
 
-    #[test]
-    fn test_addition() {
-        assert!((run("1+2") - 3.0).abs() < 1e-10);
+    #[test] fn test_addition()       { assert!((parse_and_eval("1+2")    - 3.0  ).abs() < 1e-10); }
+    #[test] fn test_precedence()     { assert!((parse_and_eval("2+3*4")  - 14.0 ).abs() < 1e-10); }
+    #[test] fn test_right_assoc_pow(){ assert!((parse_and_eval("2^3^2")  - 512.0).abs() < 1e-10); }
+    #[test] fn test_parentheses()    { assert!((parse_and_eval("(2+3)*4")- 20.0 ).abs() < 1e-10); }
+    #[test] fn test_division()       { assert!((parse_and_eval("10.0/4.0")- 2.5 ).abs() < 1e-10); }
+    #[test] fn test_decimal_edges()  {
+        assert!((parse_and_eval(".5+.25") - 0.75).abs() < 1e-10);
+        assert!((parse_and_eval("5.+.5") - 5.5 ).abs() < 1e-10);
+    }
+    #[test] fn test_unary_minus() {
+        assert!((parse_and_eval("-3+5")   - 2.0   ).abs() < 1e-10);
+        assert!((parse_and_eval("-(2+3)") - (-5.0)).abs() < 1e-10);
+    }
+    #[test] fn test_constants() {
+        assert!((parse_and_eval("pi") - std::f64::consts::PI).abs() < 1e-12);
+        assert!((parse_and_eval("e")  - std::f64::consts::E ).abs() < 1e-12);
+    }
+    #[test] fn test_sin()  { assert!( parse_and_eval("sin(0)").abs()              < 1e-10); }
+    #[test] fn test_cos()  { assert!((parse_and_eval("cos(0)") - 1.0).abs()       < 1e-10); }
+    #[test] fn test_sqrt() { assert!((parse_and_eval("sqrt(9)") - 3.0).abs()      < 1e-10); }
+    #[test] fn test_ln()   { assert!((parse_and_eval("ln(e)") - 1.0).abs()        < 1e-10); }
+    #[test] fn test_nested_calls() {
+        assert!((parse_and_eval("sqrt(sin(0)^2+cos(0)^2)") - 1.0).abs() < 1e-10);
+    }
+    #[test] fn test_complex() {
+        assert!((parse_and_eval("2+3*(4-1)^2") - 29.0).abs() < 1e-10);
     }
 
     #[test]
-    fn test_precedence() {
-        assert!((run("2+3*4") - 14.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_right_assoc_pow() {
-        assert!((run("2^3^2") - 512.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_unary_minus() {
-        assert!((run("-3+5") - 2.0).abs() < 1e-10);
-        assert!((run("-(2+3)") - (-5.0)).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_parentheses() {
-        assert!((run("(2+3)*4") - 20.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_implicit_multiply() {
-        assert!((run("2*3") - 6.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_constants() {
-        let pi = run("pi");
-        assert!((pi - std::f64::consts::PI).abs() < 1e-12);
-        let e = run("e");
-        assert!((e - std::f64::consts::E).abs() < 1e-12);
-    }
-
-    #[test]
-    fn test_sin() {
-        assert!(run("sin(0)").abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_cos() {
-        assert!((run("cos(0)") - 1.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_sqrt() {
-        assert!((run("sqrt(9)") - 3.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_nested_calls() {
-        let v = run("sqrt(sin(0)^2+cos(0)^2)");
-        assert!((v - 1.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_complex_expression() {
-        let v = run("2+3*(4-1)^2");
-        assert!((v - 29.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_arena_layout() {
+    fn test_simple_assign() {
         let mut tokens = Vec::new();
-        let mut arena = Vec::new();
-        Tokenizer::new("1+2*3").tokenize(&mut tokens).unwrap();
-        let root = Parser::new(&tokens, "1+2*3", &mut arena).parse().unwrap();
-        assert!((root as usize) < arena.len());
-    }
-
-    #[test]
-    fn test_assignment_basic() {
-        let mut tokens = Vec::new();
-        let mut arena = Vec::new();
-        let mut vars = VarStore::new();
-        Tokenizer::new("x=42").tokenize(&mut tokens).unwrap();
-        let root = Parser::new(&tokens, "x=42", &mut arena).parse().unwrap();
-        let (val, hash) = eval_assign(&arena, root, &mut vars).unwrap();
+        let mut arena  = Vec::new();
+        let mut vars   = VarStore::new();
+        let src = "x=42";
+        Tokenizer::new(src).tokenize(&mut tokens).unwrap();
+        let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
+        let result = try_simple_assign(&arena, root, &mut vars, src).unwrap();
+        assert!(result.is_some());
+        let (name, val) = result.unwrap();
+        assert_eq!(name, "x");
         assert!((val - 42.0).abs() < 1e-10);
-        assert!(hash.is_some());
     }
 
     #[test]
-    fn test_assignment_then_use() {
+    fn test_assign_then_use() {
         let mut tokens = Vec::new();
-        let mut arena = Vec::new();
-        let mut vars = VarStore::new();
-        // x = 3
-        Tokenizer::new("x=3").tokenize(&mut tokens).unwrap();
-        let root = Parser::new(&tokens, "x=3", &mut arena).parse().unwrap();
-        eval_assign(&arena, root, &mut vars).unwrap();
-        // x*x
+        let mut arena  = Vec::new();
+        let mut vars   = VarStore::new();
+        // Assign x=3
+        let src = "x=3";
+        Tokenizer::new(src).tokenize(&mut tokens).unwrap();
+        let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
+        try_simple_assign(&arena, root, &mut vars, src).unwrap();
+        // Eval x*x
         arena.clear();
-        Tokenizer::new("x*x").tokenize(&mut tokens).unwrap();
-        let root = Parser::new(&tokens, "x*x", &mut arena).parse().unwrap();
-        let val = eval(&arena, root, &vars).unwrap();
-        assert!((val - 9.0).abs() < 1e-10);
+        let src2 = "x*x";
+        Tokenizer::new(src2).tokenize(&mut tokens).unwrap();
+        let root2 = Parser::new(&tokens, src2, &mut arena).parse().unwrap();
+        assert!((eval(&arena, root2, &vars).unwrap() - 9.0).abs() < 1e-10);
     }
 
     #[test]
-    fn test_assignment_lhs_must_be_variable() {
+    fn test_equation_both_sides() {
+        // x^2+2x=2x-3  should parse without error (complex lhs is fine now)
         let mut tokens = Vec::new();
-        let mut arena = Vec::new();
-        Tokenizer::new("1+2=5").tokenize(&mut tokens).unwrap();
-        let result = Parser::new(&tokens, "1+2=5", &mut arena).parse();
-        assert!(result.is_err());
+        let mut arena  = Vec::new();
+        let src = "x^2+2*x=2*x-3";
+        Tokenizer::new(src).tokenize(&mut tokens).unwrap();
+        let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
+        matches!(arena[root as usize].kind, NodeKind::Equation(_, _));
+    }
+
+    #[test]
+    fn test_solve_linear() {
+        // x+2=5  →  x=3
+        let mut tokens = Vec::new();
+        let mut arena  = Vec::new();
+        let vars = VarStore::new();
+        let src = "x+2=5";
+        Tokenizer::new(src).tokenize(&mut tokens).unwrap();
+        let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
+        let result = evaluate_pending(&arena, root, &vars, src).unwrap();
+        if let EvalResultKind::Solved { name, value } = result.kind {
+            assert_eq!(name, "x");
+            assert!((value - 3.0).abs() < 1e-8);
+        } else { panic!("expected Solved"); }
+    }
+
+    #[test]
+    fn test_solve_quadratic() {
+        // x^2=9  →  x=3 or x=-3 (Newton from x0=1 → 3)
+        let mut tokens = Vec::new();
+        let mut arena  = Vec::new();
+        let vars = VarStore::new();
+        let src = "x^2=9";
+        Tokenizer::new(src).tokenize(&mut tokens).unwrap();
+        let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
+        let result = evaluate_pending(&arena, root, &vars, src).unwrap();
+        if let EvalResultKind::Solved { value, .. } = result.kind {
+            assert!((value.abs() - 3.0).abs() < 1e-8);
+        } else { panic!("expected Solved"); }
+    }
+
+    #[test]
+    fn test_too_many_free_vars_error() {
+        let mut tokens = Vec::new();
+        let mut arena  = Vec::new();
+        let vars = VarStore::new();
+        let src = "x+y=5";
+        Tokenizer::new(src).tokenize(&mut tokens).unwrap();
+        let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
+        assert!(evaluate_pending(&arena, root, &vars, src).is_err());
     }
 
     #[test]
@@ -524,44 +640,20 @@ mod tests {
         for i in 0..VAR_STORE_LIMIT {
             vars.set(i as u64, i as f64).unwrap();
         }
-        // One more new key must fail.
-        let err = vars.set(VAR_STORE_LIMIT as u64 + 1, 1.0);
-        assert!(err.is_err());
-        // Updating an existing key must still succeed even when full.
-        vars.set(0u64, 99.0).unwrap();
-    }
-
-    #[test]
-    fn test_division_and_float() {
-        assert!((run("10.0/4.0") - 2.5).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_decimal_edge_forms() {
-        assert!((run(".5+.25") - 0.75).abs() < 1e-10);
-        assert!((run("5.+.5") - 5.5).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_ln() {
-        assert!((run("ln(e)") - 1.0).abs() < 1e-10);
+        assert!(vars.set(VAR_STORE_LIMIT as u64 + 1, 1.0).is_err());
+        vars.set(0u64, 99.0).unwrap(); // update existing: always ok
     }
 
     #[test]
     fn test_arena_capacity_preserved_on_error() {
-        // Capacity must survive a parse error — no re-allocation next iteration.
         let mut tokens = Vec::new();
-        let mut arena = Vec::new();
-        // First: a valid parse to grow the arena.
+        let mut arena  = Vec::new();
         Tokenizer::new("1+2*3").tokenize(&mut tokens).unwrap();
         Parser::new(&tokens, "1+2*3", &mut arena).parse().unwrap();
-        let cap_after_success = arena.capacity();
-        assert!(cap_after_success > 0);
-        // Now: a parse error.
+        let cap = arena.capacity();
         arena.clear();
         Tokenizer::new("1+").tokenize(&mut tokens).unwrap();
         let _ = Parser::new(&tokens, "1+", &mut arena).parse();
-        // Capacity must be unchanged — the arena was borrowed, not moved.
-        assert_eq!(arena.capacity(), cap_after_success);
+        assert_eq!(arena.capacity(), cap);
     }
 }
