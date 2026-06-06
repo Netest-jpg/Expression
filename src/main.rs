@@ -133,11 +133,30 @@ fn write_arena<W: Write>(
 // Pending expression state
 // -----------------------------------------------------------------------
 struct Pending {
-    /// Stored source string (owns its allocation).
-    src:  String,
-    /// Arena for the pending expression (shared with main arena, swapped in).
+    src:   String,
     arena: Vec<Node>,
-    root: u32,
+    root:  u32,
+}
+
+impl Pending {
+    /// Return the names of variables in this equation that are still unbound.
+    fn free_var_names<'a>(&'a self, vars: &VarStore) -> Vec<&'a str> {
+        collect_vars(&self.arena, self.root)
+            .into_iter()
+            .filter(|(h, _, _)| vars.get(*h).is_none())
+            .map(|(_, s, e)| &self.src[s as usize..e as usize])
+            .collect()
+    }
+
+    /// Print the current state of this pending equation relative to vars.
+    fn print_status<W: Write>(&self, out: &mut W, vars: &VarStore) {
+        let free = self.free_var_names(vars);
+        if free.is_empty() {
+            writeln!(out, "  pending \"{}\" — all variables bound, type 'evaluate'", self.src).ok();
+        } else {
+            writeln!(out, "  pending \"{}\" — still need: {}", self.src, free.join(", ")).ok();
+        }
+    }
 }
 
 // -----------------------------------------------------------------------
@@ -159,16 +178,16 @@ fn main() {
     if should_print {
         writeln!(out, "Enter a math expression:").ok();
         writeln!(out, "[ use 'quit' / 'exit' / ':q' to exit ]").ok();
-        writeln!(out, "[ type 'evaluate' to solve the last equation ]").ok();
+        writeln!(out, "[ type 'evaluate' to solve the pending equation ]").ok();
         writeln!(out, "[ type 'clear' to reset all variable bindings ]").ok();
         writeln!(out).ok();
     }
 
-    let mut line       = String::with_capacity(64);
-    let mut tokens:    Vec<Token> = Vec::new();
-    let mut arena:     Vec<Node>  = Vec::new();
-    let mut vars       = VarStore::new();
-    let mut pending:   Option<Pending> = None;
+    let mut line    = String::with_capacity(64);
+    let mut tokens: Vec<Token> = Vec::new();
+    let mut arena:  Vec<Node>  = Vec::new();
+    let mut vars    = VarStore::new();
+    let mut pending: Option<Pending> = None;
 
     loop {
         if is_terminal {
@@ -197,7 +216,7 @@ fn main() {
         if expression == "clear" {
             vars.clear();
             pending = None;
-            if should_print { writeln!(out, "  (all variables cleared)").ok(); }
+            if should_print { writeln!(out, "  (all variables and pending equation cleared)").ok(); }
             if is_terminal { writeln!(out).ok(); out.flush().ok(); }
             continue;
         }
@@ -206,26 +225,17 @@ fn main() {
         if expression == "evaluate" {
             match &pending {
                 None => {
-                    eprintln!("Error: nothing to evaluate — enter an expression first.");
+                    eprintln!("Error: nothing to evaluate — enter an equation first.");
                 }
                 Some(p) => {
-                    // Check how many free vars remain
-                    let all_vars  = collect_vars(&p.arena, p.root);
-                    let free_vars: Vec<_> = all_vars.iter()
-                        .filter(|(h, _, _)| vars.get(*h).is_none())
-                        .collect();
-
-                    if free_vars.len() > 1 {
-                        // Build name list from the pending source
-                        let names: Vec<&str> = free_vars.iter()
-                            .map(|(_, s, e)| &p.src[*s as usize..*e as usize])
-                            .collect();
+                    let free = p.free_var_names(&vars);
+                    if free.len() > 1 {
                         eprintln!(
                             "Error: cannot evaluate — {} variable{} still unassigned: {}.\n\
                              Assign with  name=value  or leave exactly one free to solve for.",
-                            names.len(),
-                            if names.len() == 1 { "" } else { "s" },
-                            names.join(", ")
+                            free.len(),
+                            if free.len() == 1 { "" } else { "s" },
+                            free.join(", ")
                         );
                     } else {
                         match evaluate_pending(&p.arena, p.root, &vars, &p.src) {
@@ -237,8 +247,7 @@ fn main() {
                                             writeln!(out, "  = {}", fmt_value(v)).ok();
                                         }
                                         EvalResultKind::Verified { lhs, rhs } => {
-                                            let tol = 1e-9;
-                                            if (lhs - rhs).abs() < tol {
+                                            if (lhs - rhs).abs() < 1e-9 {
                                                 writeln!(out, "  ✓  {} = {}  (true)", fmt_value(lhs), fmt_value(rhs)).ok();
                                             } else {
                                                 writeln!(out, "  ✗  {} ≠ {}  (false)", fmt_value(lhs), fmt_value(rhs)).ok();
@@ -290,27 +299,53 @@ fn main() {
         // ---- dispatch on root kind -----------------------------------------
         match &arena[root as usize].kind {
 
-            // Equation node: try simple assignment first (x = <value>),
-            // otherwise store as pending.
+            // -----------------------------------------------------------------
+            // Equation node: try simple assignment first (x = <value>);
+            // if the lhs is complex or rhs has free vars, store as pending.
+            // -----------------------------------------------------------------
             NodeKind::Equation(_, _) => {
                 match try_simple_assign(&arena, root, &mut vars, expression) {
                     Err(e) => {
                         eprintln!("Error: {e}");
                     }
+
                     Ok(Some((name, value))) => {
-                        // Simple assignment succeeded.
+                        // x = <number>: stored in VarStore.
+                        // Then show how this affects the pending equation.
                         if should_print {
                             writeln!(out, "  {} = {}", name, fmt_value(value)).ok();
+                            if let Some(p) = &pending {
+                                p.print_status(&mut out, &vars);
+                            }
                         }
                     }
+
                     Ok(None) => {
-                        // Complex equation — store as pending, show free vars.
+                        // Complex equation (e.g. x^2+2x = 3).
+                        // Warn if we are replacing an existing pending equation,
+                        // then store and report which variables are still free.
+                        if should_print {
+                            if let Some(prev) = &pending {
+                                writeln!(out, "  (replacing pending: \"{}\")", prev.src).ok();
+                            }
+                        }
+
+                        // Build the pending entry first so we can call print_status.
                         let all_vars = collect_vars(&arena, root);
                         let free: Vec<&str> = all_vars
                             .iter()
                             .filter(|(h, _, _)| vars.get(*h).is_none())
                             .map(|(_, s, e)| &expression[*s as usize..*e as usize])
                             .collect();
+
+                        // Swap arena into pending.
+                        let mut pending_arena = Vec::new();
+                        std::mem::swap(&mut pending_arena, &mut arena);
+                        pending = Some(Pending {
+                            src:   expression.to_string(),
+                            arena: pending_arena,
+                            root,
+                        });
 
                         if should_print {
                             if free.is_empty() {
@@ -322,27 +357,21 @@ fn main() {
                                     if free.len() == 1 { "" } else { "s" },
                                     free.join(", ")
                                 ).ok();
-                                writeln!(out, "  assign value{} then type 'evaluate'",
+                                writeln!(
+                                    out,
+                                    "  assign value{} then type 'evaluate'",
                                     if free.len() == 1 { "" } else { "s" }
                                 ).ok();
                             }
                         }
-
-                        // Move arena + src into pending, give main a fresh arena.
-                        let mut pending_arena = Vec::new();
-                        std::mem::swap(&mut pending_arena, &mut arena);
-                        pending = Some(Pending {
-                            src:   expression.to_string(),
-                            arena: pending_arena,
-                            root,
-                        });
-                        // arena is now empty and ready for the next iteration.
                     }
                 }
             }
 
-            // Plain expression — evaluate immediately if all vars bound,
-            // otherwise store as pending.
+            // -----------------------------------------------------------------
+            // Plain expression: evaluate immediately if fully bound,
+            // otherwise store as pending (with replace-warning).
+            // -----------------------------------------------------------------
             _ => {
                 let all_vars = collect_vars(&arena, root);
                 let free: Vec<&str> = all_vars
@@ -352,7 +381,6 @@ fn main() {
                     .collect();
 
                 if free.is_empty() {
-                    // No free variables — evaluate immediately.
                     match eval(&arena, root, &vars) {
                         Ok(v) => {
                             if should_print {
@@ -362,15 +390,19 @@ fn main() {
                         Err(e) => eprintln!("Error: {e}"),
                     }
                 } else {
-                    // Free variables present — store as pending.
                     if should_print {
+                        if let Some(prev) = &pending {
+                            writeln!(out, "  (replacing pending: \"{}\")", prev.src).ok();
+                        }
                         writeln!(
                             out,
                             "  (stored — free variable{}: {})",
                             if free.len() == 1 { "" } else { "s" },
                             free.join(", ")
                         ).ok();
-                        writeln!(out, "  assign value{} then type 'evaluate'",
+                        writeln!(
+                            out,
+                            "  assign value{} then type 'evaluate'",
                             if free.len() == 1 { "" } else { "s" }
                         ).ok();
                     }
