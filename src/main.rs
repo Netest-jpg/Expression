@@ -8,18 +8,17 @@ use zmij::Buffer as DtoaBuffer;
 
 use lexer::{Token, Tokenizer};
 use parser::{
-    Node, NodeKind, Parser, VarStore,
-    collect_vars, eval, evaluate_pending, try_simple_assign,
-    EvalResultKind,
+    collect_vars, eval, evaluate_pending, try_simple_assign, EvalResultKind, Node, NodeKind,
+    Parser, VarStore,
 };
 #[cfg(feature = "dhat-heap")]
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
 
 fn write_tokens<W: Write>(
-    out:     &mut W,
-    tokens:  &[Token],
-    src:     &str,
+    out: &mut W,
+    tokens: &[Token],
+    src: &str,
     verbose: bool,
 ) -> std::io::Result<()> {
     write!(out, "Tokens:")?;
@@ -28,25 +27,37 @@ fn write_tokens<W: Write>(
             Token::EndOfFile => {}
             Token::Number { start, end, .. } => {
                 let s = &src[*start as usize..*end as usize];
-                if verbose { write!(out, "\n  Number({s})")?; } else { write!(out, " {s}")?; }
+                if verbose {
+                    write!(out, "\n  Number({s})")?;
+                } else {
+                    write!(out, " {s}")?;
+                }
             }
             Token::Identifier { start, end, .. } => {
                 let s = &src[*start as usize..*end as usize];
-                if verbose { write!(out, "\n  Identifier({s})")?; } else { write!(out, " {s}")?; }
+                if verbose {
+                    write!(out, "\n  Identifier({s})")?;
+                } else {
+                    write!(out, " {s}")?;
+                }
             }
             other => {
                 let s = match other {
-                    Token::Plus             => "+",
-                    Token::Minus            => "-",
-                    Token::Asterisk         => "*",
-                    Token::ForwardSlash     => "/",
-                    Token::Caret            => "^",
-                    Token::LeftParenthesis  => "(",
+                    Token::Plus => "+",
+                    Token::Minus => "-",
+                    Token::Asterisk => "*",
+                    Token::ForwardSlash => "/",
+                    Token::Caret => "^",
+                    Token::LeftParenthesis => "(",
                     Token::RightParenthesis => ")",
-                    Token::Equals           => "=",
+                    Token::Equals => "=",
                     _ => unreachable!(),
                 };
-                if verbose { write!(out, "\n  {s}")?; } else { write!(out, " {s}")?; }
+                if verbose {
+                    write!(out, "\n  {s}")?;
+                } else {
+                    write!(out, " {s}")?;
+                }
             }
         }
     }
@@ -65,72 +76,81 @@ fn write_value<W: Write>(out: &mut W, v: f64) -> std::io::Result<()> {
 
 fn write_node_compact<W: Write>(out: &mut W, kind: &NodeKind, src: &str) -> std::io::Result<()> {
     match kind {
-        NodeKind::Number(v)           => write_value(out, *v),
-        NodeKind::Constant(v)         => {
-            if (v - std::f64::consts::PI).abs() < 1e-14 { write!(out, "π") }
-            else if (v - std::f64::consts::E).abs() < 1e-14 { write!(out, "e") }
-            else { write_value(out, *v) }
+        NodeKind::Number(v) => write_value(out, *v),
+        NodeKind::Constant(v) => {
+            if (v - std::f64::consts::PI).abs() < 1e-14 {
+                write!(out, "π")
+            } else if (v - std::f64::consts::E).abs() < 1e-14 {
+                write!(out, "e")
+            } else {
+                write_value(out, *v)
+            }
         }
-        NodeKind::Variable(s, e, _)   => write!(out, "{}", &src[*s as usize..*e as usize]),
-        NodeKind::Neg(a)              => write!(out, "-(n{a})"),
-        NodeKind::Equation(a, b)      => write!(out, "n{a} = n{b}"),
-        NodeKind::Add(a, b)           => write!(out, "n{a} + n{b}"),
-        NodeKind::Sub(a, b)           => write!(out, "n{a} - n{b}"),
-        NodeKind::Mul(a, b)           => write!(out, "n{a} * n{b}"),
-        NodeKind::Div(a, b)           => write!(out, "n{a} / n{b}"),
-        NodeKind::Pow(a, b)           => write!(out, "n{a} ^ n{b}"),
-        NodeKind::Sin(a)              => write!(out, "sin(n{a})"),
-        NodeKind::Cos(a)              => write!(out, "cos(n{a})"),
-        NodeKind::Tan(a)              => write!(out, "tan(n{a})"),
-        NodeKind::Ln(a)               => write!(out, "ln(n{a})"),
-        NodeKind::Log(a)              => write!(out, "log(n{a})"),
-        NodeKind::Sqrt(a)             => write!(out, "sqrt(n{a})"),
-        NodeKind::Call { hash, arg }  => write!(out, "call<{hash}>(n{arg})"),
+        NodeKind::Variable(s, e, _) => write!(out, "{}", &src[*s as usize..*e as usize]),
+        NodeKind::Neg(a) => write!(out, "-(n{a})"),
+        NodeKind::Equation(a, b) => write!(out, "n{a} = n{b}"),
+        NodeKind::Add(a, b) => write!(out, "n{a} + n{b}"),
+        NodeKind::Sub(a, b) => write!(out, "n{a} - n{b}"),
+        NodeKind::Mul(a, b) => write!(out, "n{a} * n{b}"),
+        NodeKind::Div(a, b) => write!(out, "n{a} / n{b}"),
+        NodeKind::Pow(a, b) => write!(out, "n{a} ^ n{b}"),
+        NodeKind::Sin(a) => write!(out, "sin(n{a})"),
+        NodeKind::Cos(a) => write!(out, "cos(n{a})"),
+        NodeKind::Tan(a) => write!(out, "tan(n{a})"),
+        NodeKind::Ln(a) => write!(out, "ln(n{a})"),
+        NodeKind::Log(a) => write!(out, "log(n{a})"),
+        NodeKind::Sqrt(a) => write!(out, "sqrt(n{a})"),
+        NodeKind::Call { hash, arg } => write!(out, "call<{hash}>(n{arg})"),
     }
 }
 
 fn write_node_verbose<W: Write>(out: &mut W, kind: &NodeKind, src: &str) -> std::io::Result<()> {
     match kind {
-        NodeKind::Number(v)           => write!(out, "Number({v})"),
-        NodeKind::Constant(v)         => write!(out, "Constant({v})"),
-        NodeKind::Variable(s, e, _)   => write!(out, "Variable({:?})", &src[*s as usize..*e as usize]),
-        NodeKind::Neg(c)              => write!(out, "Neg(n{c})"),
-        NodeKind::Equation(l, r)      => write!(out, "Equation(n{l}, n{r})"),
-        NodeKind::Add(l, r)           => write!(out, "Add(n{l}, n{r})"),
-        NodeKind::Sub(l, r)           => write!(out, "Sub(n{l}, n{r})"),
-        NodeKind::Mul(l, r)           => write!(out, "Mul(n{l}, n{r})"),
-        NodeKind::Div(l, r)           => write!(out, "Div(n{l}, n{r})"),
-        NodeKind::Pow(l, r)           => write!(out, "Pow(n{l}, n{r})"),
-        NodeKind::Sin(c)              => write!(out, "Sin(n{c})"),
-        NodeKind::Cos(c)              => write!(out, "Cos(n{c})"),
-        NodeKind::Tan(c)              => write!(out, "Tan(n{c})"),
-        NodeKind::Ln(c)               => write!(out, "Ln(n{c})"),
-        NodeKind::Log(c)              => write!(out, "Log(n{c})"),
-        NodeKind::Sqrt(c)             => write!(out, "Sqrt(n{c})"),
-        NodeKind::Call { hash, arg }  => write!(out, "Call(hash: {hash}, arg: n{arg})"),
+        NodeKind::Number(v) => write!(out, "Number({v})"),
+        NodeKind::Constant(v) => write!(out, "Constant({v})"),
+        NodeKind::Variable(s, e, _) => {
+            write!(out, "Variable({:?})", &src[*s as usize..*e as usize])
+        }
+        NodeKind::Neg(c) => write!(out, "Neg(n{c})"),
+        NodeKind::Equation(l, r) => write!(out, "Equation(n{l}, n{r})"),
+        NodeKind::Add(l, r) => write!(out, "Add(n{l}, n{r})"),
+        NodeKind::Sub(l, r) => write!(out, "Sub(n{l}, n{r})"),
+        NodeKind::Mul(l, r) => write!(out, "Mul(n{l}, n{r})"),
+        NodeKind::Div(l, r) => write!(out, "Div(n{l}, n{r})"),
+        NodeKind::Pow(l, r) => write!(out, "Pow(n{l}, n{r})"),
+        NodeKind::Sin(c) => write!(out, "Sin(n{c})"),
+        NodeKind::Cos(c) => write!(out, "Cos(n{c})"),
+        NodeKind::Tan(c) => write!(out, "Tan(n{c})"),
+        NodeKind::Ln(c) => write!(out, "Ln(n{c})"),
+        NodeKind::Log(c) => write!(out, "Log(n{c})"),
+        NodeKind::Sqrt(c) => write!(out, "Sqrt(n{c})"),
+        NodeKind::Call { hash, arg } => write!(out, "Call(hash: {hash}, arg: n{arg})"),
     }
 }
 
 fn write_arena<W: Write>(
-    out:     &mut W,
-    root:    u32,
-    arena:   &[Node],
-    src:     &str,
+    out: &mut W,
+    root: u32,
+    arena: &[Node],
+    src: &str,
     verbose: bool,
 ) -> std::io::Result<()> {
     write!(out, "AST root: n{root}\nAST arena:")?;
     for (i, node) in arena.iter().enumerate() {
         write!(out, "\n  n{i}: ")?;
-        if verbose { write_node_verbose(out, &node.kind, src)?; }
-        else       { write_node_compact(out, &node.kind, src)?; }
+        if verbose {
+            write_node_verbose(out, &node.kind, src)?;
+        } else {
+            write_node_compact(out, &node.kind, src)?;
+        }
     }
     Ok(())
 }
 
 struct Pending {
-    src:   String,
+    src: String,
     arena: Vec<Node>,
-    root:  u32,
+    root: u32,
 }
 
 impl Pending {
@@ -147,9 +167,20 @@ impl Pending {
     fn print_status<W: Write>(&self, out: &mut W, vars: &VarStore) {
         let free = self.free_var_names(vars);
         if free.is_empty() {
-            writeln!(out, "  pending \"{}\" — all variables bound, type 'evaluate'", self.src).ok();
+            writeln!(
+                out,
+                "  pending \"{}\" — all variables bound, type 'evaluate'",
+                self.src
+            )
+            .ok();
         } else {
-            writeln!(out, "  pending \"{}\" — still need: {}", self.src, free.join(", ")).ok();
+            writeln!(
+                out,
+                "  pending \"{}\" — still need: {}",
+                self.src,
+                free.join(", ")
+            )
+            .ok();
         }
     }
 }
@@ -169,7 +200,9 @@ fn main() {
     let is_terminal = std::io::stdin().is_terminal();
     let should_print = is_terminal || verbose;
 
-    if verbose { writeln!(out, "Debug mode ON").ok(); }
+    if verbose {
+        writeln!(out, "Debug mode ON").ok();
+    }
     if should_print {
         writeln!(out, "Enter a math expression:").ok();
         writeln!(out, "[ use 'quit' / 'exit' / ':q' to exit ]").ok();
@@ -178,10 +211,10 @@ fn main() {
         writeln!(out).ok();
     }
 
-    let mut line        = String::with_capacity(64);
+    let mut line = String::with_capacity(64);
     let mut tokens: Vec<Token> = Vec::new();
-    let mut arena:  Vec<Node>  = Vec::new();
-    let mut vars    = VarStore::new();
+    let mut arena: Vec<Node> = Vec::new();
+    let mut vars = VarStore::new();
     let mut pending: Option<Pending> = None;
     // Hoisted buffer: reused for Pending.src each iteration instead of
     // calling expression.to_string() which allocates a fresh String every time.
@@ -195,27 +228,41 @@ fn main() {
 
         line.clear();
         match stdin.read_line(&mut line) {
-            Ok(0)  => break,
-            Ok(_)  => {}
-            Err(e) => { eprintln!("Error: {e}"); break; }
+            Ok(0) => break,
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!("Error: {e}");
+                break;
+            }
         }
-        if line.capacity() > 512 { line.shrink_to(128); }
+        if line.capacity() > 512 {
+            line.shrink_to(128);
+        }
 
         let expression = line.trim();
 
         // ---- control words -------------------------------------------------
         if matches!(expression, "quit" | "exit" | ":q") {
-            if should_print { writeln!(out, "bye bye").ok(); }
+            if should_print {
+                writeln!(out, "bye bye").ok();
+            }
             break;
         }
 
-        if expression.is_empty() { continue; }
+        if expression.is_empty() {
+            continue;
+        }
 
         if expression == "clear" {
             vars.clear();
             pending = None;
-            if should_print { writeln!(out, "  (all variables and pending equation cleared)").ok(); }
-            if is_terminal { writeln!(out).ok(); out.flush().ok(); }
+            if should_print {
+                writeln!(out, "  (all variables and pending equation cleared)").ok();
+            }
+            if is_terminal {
+                writeln!(out).ok();
+                out.flush().ok();
+            }
             continue;
         }
 
@@ -272,13 +319,19 @@ fn main() {
                     }
                 }
             }
-            if is_terminal { writeln!(out).ok(); out.flush().ok(); }
+            if is_terminal {
+                writeln!(out).ok();
+                out.flush().ok();
+            }
             continue;
         }
 
         if let Err(e) = Tokenizer::new(expression).tokenize(&mut tokens) {
             eprintln!("Error: {e}");
-            if is_terminal { writeln!(out).ok(); out.flush().ok(); }
+            if is_terminal {
+                writeln!(out).ok();
+                out.flush().ok();
+            }
             continue;
         }
 
@@ -292,7 +345,10 @@ fn main() {
         let root = match Parser::new(&tokens, expression, &mut arena).parse() {
             Err(e) => {
                 eprintln!("Error: {e}");
-                if is_terminal { writeln!(out).ok(); out.flush().ok(); }
+                if is_terminal {
+                    writeln!(out).ok();
+                    out.flush().ok();
+                }
                 continue;
             }
             Ok(r) => r,
@@ -305,7 +361,6 @@ fn main() {
 
         // ---- dispatch on root kind -----------------------------------------
         match &arena[root as usize].kind {
-
             // -----------------------------------------------------------------
             // Equation node: try simple assignment first (x = <value>);
             // if the lhs is complex or rhs has free vars, store as pending.
@@ -351,38 +406,42 @@ fn main() {
                         std::mem::swap(&mut pending_arena, &mut arena);
                         pending_src.clear();
                         pending_src.push_str(expression); // reuse heap, no alloc if cap sufficient
-                        // Safety: pending_src is not accessed while pending is live
-                        // because pending_src is only mutated here, before the new
-                        // Pending is constructed, and reclaimed from Pending above.
+                                                          // Safety: pending_src is not accessed while pending is live
+                                                          // because pending_src is only mutated here, before the new
+                                                          // Pending is constructed, and reclaimed from Pending above.
                         let src = std::mem::take(&mut pending_src);
                         pending = Some(Pending {
-                            src:   src,
+                            src: src,
                             arena: pending_arena,
                             root,
                         });
 
                         if should_print {
                             // Only collect vars for display; skip the allocation in non-interactive mode.
-                            let all_vars = collect_vars(pending.as_ref().unwrap().arena.as_slice(), root);
+                            let all_vars =
+                                collect_vars(pending.as_ref().unwrap().arena.as_slice(), root);
                             let free: Vec<&str> = all_vars
                                 .iter()
                                 .filter(|(h, _, _)| vars.get(*h).is_none())
                                 .map(|(_, s, e)| &expression[*s as usize..*e as usize])
                                 .collect();
                             if free.is_empty() {
-                                writeln!(out, "  (all variables bound — type 'evaluate' to check)").ok();
+                                writeln!(out, "  (all variables bound — type 'evaluate' to check)")
+                                    .ok();
                             } else {
                                 writeln!(
                                     out,
                                     "  (stored — free variable{}: {})",
                                     if free.len() == 1 { "" } else { "s" },
                                     free.join(", ")
-                                ).ok();
+                                )
+                                .ok();
                                 writeln!(
                                     out,
                                     "  assign value{} then type 'evaluate'",
                                     if free.len() == 1 { "" } else { "s" }
-                                ).ok();
+                                )
+                                .ok();
                             }
                         }
                     }
@@ -405,7 +464,8 @@ fn main() {
                             parser::EvalError::UnboundVariable => {
                                 if should_print {
                                     if let Some(prev) = &pending {
-                                        writeln!(out, "  (replacing pending: \"{}\")", prev.src).ok();
+                                        writeln!(out, "  (replacing pending: \"{}\")", prev.src)
+                                            .ok();
                                     }
                                     // Only collect names for display.
                                     let all_vars = collect_vars(&arena, root);
@@ -419,12 +479,14 @@ fn main() {
                                         "  (stored — free variable{}: {})",
                                         if free.len() == 1 { "" } else { "s" },
                                         free.join(", ")
-                                    ).ok();
+                                    )
+                                    .ok();
                                     writeln!(
                                         out,
                                         "  assign value{} then type 'evaluate'",
                                         if free.len() == 1 { "" } else { "s" }
-                                    ).ok();
+                                    )
+                                    .ok();
                                 }
 
                                 let mut pending_arena = match pending.take() {
@@ -439,7 +501,7 @@ fn main() {
                                 pending_src.push_str(expression); // reuse heap, no alloc if cap sufficient
                                 let src = std::mem::take(&mut pending_src);
                                 pending = Some(Pending {
-                                    src:   src,
+                                    src: src,
                                     arena: pending_arena,
                                     root,
                                 });
@@ -453,6 +515,9 @@ fn main() {
             }
         }
 
-        if is_terminal { writeln!(out).ok(); out.flush().ok(); }
+        if is_terminal {
+            writeln!(out).ok();
+            out.flush().ok();
+        }
     }
 }
