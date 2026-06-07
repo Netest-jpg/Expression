@@ -266,7 +266,8 @@ impl VarStore {
         self.entries.push((hash, value));
         Ok(())
     }
-
+    
+    #[inline(always)]
     pub fn clear(&mut self) { self.entries.clear(); }
 
     /// Clone all current bindings and push one extra slot for `hash`.
