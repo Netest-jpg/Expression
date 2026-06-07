@@ -269,17 +269,27 @@ impl VarStore {
 
     pub fn clear(&mut self) { self.entries.clear(); }
 
-    /// Copy all current bindings into `dst`, then add one extra binding.
-    /// Used by the Newton solver to snapshot vars + inject a trial value.
-    pub fn snapshot_with(&self, hash: u64, value: f64) -> VarStore {
-        let mut s = VarStore { entries: self.entries.clone() };
-        // update if already present, else push
-        if let Some(e) = s.entries.iter_mut().find(|(h, _)| *h == hash) {
-            e.1 = value;
+    /// Clone all current bindings and push one extra slot for `hash`.
+    /// The unknown's value is left as 0.0; call `set_last` to update it.
+    /// Used by the Newton solver: one allocation before the loop, then
+    /// `set_last` updates the single f64 each iteration — no further allocs.
+    pub fn clone_for_probe(&self, hash: u64) -> VarStore {
+        let mut probe = VarStore { entries: self.entries.clone() };
+        // If the hash already exists (unlikely for a free var), update it;
+        // otherwise push a new slot that set_last will overwrite.
+        if let Some(e) = probe.entries.iter_mut().find(|(h, _)| *h == hash) {
+            e.1 = 0.0;
         } else {
-            s.entries.push((hash, value));
+            probe.entries.push((hash, 0.0));
         }
-        s
+        probe
+    }
+
+    /// Update the value of the last entry (the unknown slot created by
+    /// `clone_for_probe`).  Panics if entries is empty.
+    #[inline(always)]
+    pub fn set_last(&mut self, value: f64) {
+        self.entries.last_mut().unwrap().1 = value;
     }
 }
 
@@ -318,17 +328,41 @@ fn collect_vars_inner(arena: &[Node], idx: u32, out: &mut Vec<(u64, u32, u32)>) 
 // -----------------------------------------------------------------------
 // Eval — pure expression, all variables must be bound.
 // -----------------------------------------------------------------------
-pub fn eval(arena: &[Node], idx: u32, vars: &VarStore) -> Result<f64, String> {
+
+/// Zero-allocation error type for eval.  Only converted to String at the
+/// display boundary, so the Newton hot path never heap-allocates on errors.
+#[derive(Debug)]
+pub enum EvalError {
+    /// A variable was looked up but had no binding in VarStore.
+    UnboundVariable,
+    /// The root node is an Equation — use evaluate_pending instead.
+    IsEquation,
+    /// An unknown function hash was encountered; carries the evaluated arg.
+    UnknownFunction { hash: u64, arg_value: f64 },
+}
+
+impl EvalError {
+    pub fn to_string_msg(&self) -> String {
+        match self {
+            EvalError::UnboundVariable => "unbound variable".to_string(),
+            EvalError::IsEquation => "use 'evaluate' to evaluate an equation".to_string(),
+            EvalError::UnknownFunction { hash, arg_value } =>
+                format!("unknown function hash {hash} applied to {arg_value:?}"),
+        }
+    }
+}
+
+pub fn eval(arena: &[Node], idx: u32, vars: &VarStore) -> Result<f64, EvalError> {
     match unsafe { &arena.get_unchecked(idx as usize).kind } {
         NodeKind::Number(v)   => Ok(*v),
         NodeKind::Constant(v) => Ok(*v),
 
-        NodeKind::Variable(start, end, hash) => vars
+        NodeKind::Variable(_, _, hash) => vars
             .get(*hash)
-            .ok_or_else(|| format!("unbound variable at [{start}..{end}]")),
+            .ok_or(EvalError::UnboundVariable),
 
         // Equation nodes are not evaluated by plain eval; use evaluate_pending.
-        NodeKind::Equation(_, _) => Err("use 'evaluate' to evaluate an equation".to_string()),
+        NodeKind::Equation(_, _) => Err(EvalError::IsEquation),
 
         NodeKind::Neg(a)    => Ok(-eval(arena, *a, vars)?),
         NodeKind::Add(a, b) => Ok(eval(arena, *a, vars)? + eval(arena, *b, vars)?),
@@ -344,10 +378,10 @@ pub fn eval(arena: &[Node], idx: u32, vars: &VarStore) -> Result<f64, String> {
         NodeKind::Log(a)  => Ok(eval(arena, *a, vars)?.log10()),
         NodeKind::Sqrt(a) => Ok(eval(arena, *a, vars)?.sqrt()),
 
-        NodeKind::Call { hash, arg } => Err(format!(
-            "unknown function hash {hash} applied to {:?}",
-            eval(arena, *arg, vars)?
-        )),
+        NodeKind::Call { hash, arg } => {
+            let arg_value = eval(arena, *arg, vars)?;
+            Err(EvalError::UnknownFunction { hash: *hash, arg_value })
+        }
     }
 }
 
@@ -379,7 +413,7 @@ pub fn try_simple_assign(
     };
 
     // rhs must be fully evaluable right now
-    let value = eval(arena, rhs, vars)?;
+    let value = eval(arena, rhs, vars).map_err(|e| e.to_string_msg())?;
     vars.set(var_hash, value)?;
     Ok(Some((var_name, value)))
 }
@@ -417,24 +451,21 @@ pub fn evaluate_pending(
     let (lhs_idx, rhs_idx) = match &arena[root as usize].kind {
         NodeKind::Equation(l, r) => (*l, *r),
         _ => {
-            let v = eval(arena, root, vars)?;
+            let v = eval(arena, root, vars).map_err(|e| e.to_string_msg())?;
             return Ok(EvalResult { kind: EvalResultKind::Value(v) });
         }
     };
 
-    // Collect free variables (unbound in VarStore)
-    let all_vars = collect_vars(arena, root);
-    let free: Vec<(u64, u32, u32)> = all_vars
-        .iter()
-        .filter(|(hash, _, _)| vars.get(*hash).is_none())
-        .copied()
-        .collect();
+    // Collect free variables (unbound in VarStore).
+    // Reuse a single Vec: collect_vars fills it, retain filters in place.
+    let mut free = collect_vars(arena, root);
+    free.retain(|(hash, _, _)| vars.get(*hash).is_none());
 
     match free.len() {
         0 => {
             // All bound — evaluate both sides.
-            let lhs_val = eval(arena, lhs_idx, vars)?;
-            let rhs_val = eval(arena, rhs_idx, vars)?;
+            let lhs_val = eval(arena, lhs_idx, vars).map_err(|e| e.to_string_msg())?;
+            let rhs_val = eval(arena, rhs_idx, vars).map_err(|e| e.to_string_msg())?;
             Ok(EvalResult { kind: EvalResultKind::Verified { lhs: lhs_val, rhs: rhs_val } })
         }
 
@@ -443,19 +474,23 @@ pub fn evaluate_pending(
             let name = src[start as usize..end as usize].to_string();
 
             // f(x) = lhs(x) - rhs(x); we want f(x) = 0.
-            // Newton's method with numerical derivative.
-            let f = |x: f64| -> Result<f64, String> {
-                let tmp = vars.snapshot_with(unknown_hash, x);
-                let l = eval(arena, lhs_idx, &tmp)?;
-                let r = eval(arena, rhs_idx, &tmp)?;
+            //
+            // Build a probe VarStore once (one clone of entries + one push),
+            // then update only the unknown's slot each Newton step via set_last.
+            // Zero heap allocations inside the Newton loop.
+            let mut probe = vars.clone_for_probe(unknown_hash);
+            let mut f = |x: f64| -> Result<f64, String> {
+                probe.set_last(x);
+                let l = eval(arena, lhs_idx, &probe).map_err(|e| e.to_string_msg())?;
+                let r = eval(arena, rhs_idx, &probe).map_err(|e| e.to_string_msg())?;
                 Ok(l - r)
             };
 
             // Newton's method, max 64 iterations, starting at x=1.0 then x=0.0 if needed.
-            let solution = newton(&f, 1.0)
-                .or_else(|_| newton(&f, 0.0))
-                .or_else(|_| newton(&f, -1.0))
-                .or_else(|_| newton(&f, 10.0))
+            let solution = newton(&mut f, 1.0)
+                .or_else(|_| newton(&mut f, 0.0))
+                .or_else(|_| newton(&mut f, -1.0))
+                .or_else(|_| newton(&mut f, 10.0))
                 .map_err(|_| format!(
                     "could not solve for '{name}'; try assigning an initial guess manually"
                 ))?;
@@ -464,18 +499,18 @@ pub fn evaluate_pending(
         }
 
         _ => {
-            // Build a helpful list of which names still need values.
-            let names: Vec<String> = free
-                .iter()
-                .map(|(_, start, end)| src[*start as usize..*end as usize].to_string())
-                .collect();
-            Err(format!(
-                "cannot evaluate: {} variable{} still unassigned: {}.\n\
-                 Assign values with  name=value  or leave exactly one free for solving.",
-                names.len(),
-                if names.len() == 1 { "" } else { "s" },
-                names.join(", ")
-            ))
+            // Build error message without a Vec<String> intermediate.
+            let mut msg = format!(
+                "cannot evaluate: {} variable{} still unassigned: ",
+                free.len(),
+                if free.len() == 1 { "" } else { "s" },
+            );
+            for (i, (_, start, end)) in free.iter().enumerate() {
+                if i > 0 { msg.push_str(", "); }
+                msg.push_str(&src[*start as usize..*end as usize]);
+            }
+            msg.push_str(".\nAssign values with  name=value  or leave exactly one free for solving.");
+            Err(msg)
         }
     }
 }
@@ -483,7 +518,7 @@ pub fn evaluate_pending(
 // -----------------------------------------------------------------------
 // Newton's method: find x such that f(x) ≈ 0.
 // -----------------------------------------------------------------------
-fn newton(f: &impl Fn(f64) -> Result<f64, String>, x0: f64) -> Result<f64, String> {
+fn newton(f: &mut impl FnMut(f64) -> Result<f64, String>, x0: f64) -> Result<f64, String> {
     const MAX_ITER: usize = 64;
     const TOL:      f64   = 1e-10;
     const H:        f64   = 1e-7;

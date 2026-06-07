@@ -11,3 +11,5 @@ fast-float2 = "0.2"
 [profile.release]
 opt-level = 3
 lto = "thin"
+[features]
+dhat-heap=[]

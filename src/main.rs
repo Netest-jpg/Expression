@@ -12,10 +12,10 @@ use parser::{
     collect_vars, eval, evaluate_pending, try_simple_assign,
     EvalResultKind,
 };
+#[cfg(feature = "dhat-heap")]
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
 
-// -----------------------------------------------------------------------
-// Token display
-// -----------------------------------------------------------------------
 fn write_tokens<W: Write>(
     out:     &mut W,
     tokens:  &[Token],
@@ -53,25 +53,23 @@ fn write_tokens<W: Write>(
     Ok(())
 }
 
-// -----------------------------------------------------------------------
-// AST display
-// -----------------------------------------------------------------------
-fn fmt_value(v: f64) -> String {
+#[inline(always)]
+fn write_value<W: Write>(out: &mut W, v: f64) -> std::io::Result<()> {
     if v.fract() == 0.0 && v.abs() < 1e15 {
-        format!("{}", v as i64)
+        write!(out, "{}", v as i64)
     } else {
         let mut buf = DtoaBuffer::new();
-        buf.format(v).to_string()
+        out.write_all(buf.format(v).as_bytes())
     }
 }
 
 fn write_node_compact<W: Write>(out: &mut W, kind: &NodeKind, src: &str) -> std::io::Result<()> {
     match kind {
-        NodeKind::Number(v)           => write!(out, "{}", fmt_value(*v)),
+        NodeKind::Number(v)           => write_value(out, *v),
         NodeKind::Constant(v)         => {
             if (v - std::f64::consts::PI).abs() < 1e-14 { write!(out, "π") }
             else if (v - std::f64::consts::E).abs() < 1e-14 { write!(out, "e") }
-            else { write!(out, "{}", fmt_value(*v)) }
+            else { write_value(out, *v) }
         }
         NodeKind::Variable(s, e, _)   => write!(out, "{}", &src[*s as usize..*e as usize]),
         NodeKind::Neg(a)              => write!(out, "-(n{a})"),
@@ -129,9 +127,6 @@ fn write_arena<W: Write>(
     Ok(())
 }
 
-// -----------------------------------------------------------------------
-// Pending expression state
-// -----------------------------------------------------------------------
 struct Pending {
     src:   String,
     arena: Vec<Node>,
@@ -159,10 +154,10 @@ impl Pending {
     }
 }
 
-// -----------------------------------------------------------------------
-// main
-// -----------------------------------------------------------------------
 fn main() {
+    #[cfg(feature = "dhat-heap")]
+    let _profiler = dhat::Profiler::new_heap();
+
     let verbose = std::env::args().any(|a| a == "--debug");
 
     let stdout = std::io::stdout();
@@ -183,11 +178,14 @@ fn main() {
         writeln!(out).ok();
     }
 
-    let mut line    = String::with_capacity(64);
+    let mut line        = String::with_capacity(64);
     let mut tokens: Vec<Token> = Vec::new();
     let mut arena:  Vec<Node>  = Vec::new();
     let mut vars    = VarStore::new();
     let mut pending: Option<Pending> = None;
+    // Hoisted buffer: reused for Pending.src each iteration instead of
+    // calling expression.to_string() which allocates a fresh String every time.
+    let mut pending_src = String::new();
 
     loop {
         if is_terminal {
@@ -221,7 +219,6 @@ fn main() {
             continue;
         }
 
-        // ---- 'evaluate' command --------------------------------------------
         if expression == "evaluate" {
             match &pending {
                 None => {
@@ -244,17 +241,29 @@ fn main() {
                                 if should_print {
                                     match result.kind {
                                         EvalResultKind::Value(v) => {
-                                            writeln!(out, "  = {}", fmt_value(v)).ok();
+                                            write!(out, "  = ").ok();
+                                            write_value(&mut out, v).ok();
+                                            writeln!(out).ok();
                                         }
                                         EvalResultKind::Verified { lhs, rhs } => {
                                             if (lhs - rhs).abs() < 1e-9 {
-                                                writeln!(out, "  ✓  {} = {}  (true)", fmt_value(lhs), fmt_value(rhs)).ok();
+                                                write!(out, "  ✓  ").ok();
+                                                write_value(&mut out, lhs).ok();
+                                                write!(out, " = ").ok();
+                                                write_value(&mut out, rhs).ok();
+                                                writeln!(out, "  (true)").ok();
                                             } else {
-                                                writeln!(out, "  ✗  {} ≠ {}  (false)", fmt_value(lhs), fmt_value(rhs)).ok();
+                                                write!(out, "  ✗  ").ok();
+                                                write_value(&mut out, lhs).ok();
+                                                write!(out, " ≠ ").ok();
+                                                write_value(&mut out, rhs).ok();
+                                                writeln!(out, "  (false)").ok();
                                             }
                                         }
                                         EvalResultKind::Solved { name, value } => {
-                                            writeln!(out, "  {} = {}", name, fmt_value(value)).ok();
+                                            write!(out, "  {} = ", name).ok();
+                                            write_value(&mut out, value).ok();
+                                            writeln!(out).ok();
                                         }
                                     }
                                 }
@@ -267,7 +276,6 @@ fn main() {
             continue;
         }
 
-        // ---- tokenize ------------------------------------------------------
         if let Err(e) = Tokenizer::new(expression).tokenize(&mut tokens) {
             eprintln!("Error: {e}");
             if is_terminal { writeln!(out).ok(); out.flush().ok(); }
@@ -280,7 +288,6 @@ fn main() {
             writeln!(out).ok();
         }
 
-        // ---- parse ---------------------------------------------------------
         arena.clear();
         let root = match Parser::new(&tokens, expression, &mut arena).parse() {
             Err(e) => {
@@ -313,7 +320,9 @@ fn main() {
                         // x = <number>: stored in VarStore.
                         // Then show how this affects the pending equation.
                         if should_print {
-                            writeln!(out, "  {} = {}", name, fmt_value(value)).ok();
+                            write!(out, "  {} = ", name).ok();
+                            write_value(&mut out, value).ok();
+                            writeln!(out).ok();
                             if let Some(p) = &pending {
                                 p.print_status(&mut out, &vars);
                             }
@@ -330,24 +339,36 @@ fn main() {
                             }
                         }
 
-                        // Build the pending entry first so we can call print_status.
-                        let all_vars = collect_vars(&arena, root);
-                        let free: Vec<&str> = all_vars
-                            .iter()
-                            .filter(|(h, _, _)| vars.get(*h).is_none())
-                            .map(|(_, s, e)| &expression[*s as usize..*e as usize])
-                            .collect();
-
-                        // Swap arena into pending.
-                        let mut pending_arena = Vec::new();
+                        // Reclaim the old pending_src buffer (if any) so its heap
+                        // allocation is reused by push_str below — no fresh alloc.
+                        let mut pending_arena = match pending.take() {
+                            Some(old) => {
+                                pending_src = old.src; // reclaim String buffer
+                                old.arena
+                            }
+                            None => Vec::new(),
+                        };
                         std::mem::swap(&mut pending_arena, &mut arena);
+                        pending_src.clear();
+                        pending_src.push_str(expression); // reuse heap, no alloc if cap sufficient
+                        // Safety: pending_src is not accessed while pending is live
+                        // because pending_src is only mutated here, before the new
+                        // Pending is constructed, and reclaimed from Pending above.
+                        let src = std::mem::take(&mut pending_src);
                         pending = Some(Pending {
-                            src:   expression.to_string(),
+                            src:   src,
                             arena: pending_arena,
                             root,
                         });
 
                         if should_print {
+                            // Only collect vars for display; skip the allocation in non-interactive mode.
+                            let all_vars = collect_vars(pending.as_ref().unwrap().arena.as_slice(), root);
+                            let free: Vec<&str> = all_vars
+                                .iter()
+                                .filter(|(h, _, _)| vars.get(*h).is_none())
+                                .map(|(_, s, e)| &expression[*s as usize..*e as usize])
+                                .collect();
                             if free.is_empty() {
                                 writeln!(out, "  (all variables bound — type 'evaluate' to check)").ok();
                             } else {
@@ -368,52 +389,66 @@ fn main() {
                 }
             }
 
-            // -----------------------------------------------------------------
-            // Plain expression: evaluate immediately if fully bound,
-            // otherwise store as pending (with replace-warning).
-            // -----------------------------------------------------------------
             _ => {
-                let all_vars = collect_vars(&arena, root);
-                let free: Vec<&str> = all_vars
-                    .iter()
-                    .filter(|(h, _, _)| vars.get(*h).is_none())
-                    .map(|(_, s, e)| &expression[*s as usize..*e as usize])
-                    .collect();
+                match eval(&arena, root, &vars) {
+                    Ok(v) => {
+                        if should_print {
+                            write!(out, "  = ").ok();
+                            write_value(&mut out, v).ok();
+                            writeln!(out).ok();
+                        }
+                    }
+                    // eval returns Err — match on the type to distinguish
+                    // unbound variables (store as pending) from real errors.
+                    Err(e) => {
+                        match e {
+                            parser::EvalError::UnboundVariable => {
+                                if should_print {
+                                    if let Some(prev) = &pending {
+                                        writeln!(out, "  (replacing pending: \"{}\")", prev.src).ok();
+                                    }
+                                    // Only collect names for display.
+                                    let all_vars = collect_vars(&arena, root);
+                                    let free: Vec<&str> = all_vars
+                                        .iter()
+                                        .filter(|(h, _, _)| vars.get(*h).is_none())
+                                        .map(|(_, s, e)| &expression[*s as usize..*e as usize])
+                                        .collect();
+                                    writeln!(
+                                        out,
+                                        "  (stored — free variable{}: {})",
+                                        if free.len() == 1 { "" } else { "s" },
+                                        free.join(", ")
+                                    ).ok();
+                                    writeln!(
+                                        out,
+                                        "  assign value{} then type 'evaluate'",
+                                        if free.len() == 1 { "" } else { "s" }
+                                    ).ok();
+                                }
 
-                if free.is_empty() {
-                    match eval(&arena, root, &vars) {
-                        Ok(v) => {
-                            if should_print {
-                                writeln!(out, "  = {}", fmt_value(v)).ok();
+                                let mut pending_arena = match pending.take() {
+                                    Some(old) => {
+                                        pending_src = old.src; // reclaim String buffer
+                                        old.arena
+                                    }
+                                    None => Vec::new(),
+                                };
+                                std::mem::swap(&mut pending_arena, &mut arena);
+                                pending_src.clear();
+                                pending_src.push_str(expression); // reuse heap, no alloc if cap sufficient
+                                let src = std::mem::take(&mut pending_src);
+                                pending = Some(Pending {
+                                    src:   src,
+                                    arena: pending_arena,
+                                    root,
+                                });
+                            }
+                            other => {
+                                eprintln!("Error: {}", other.to_string_msg());
                             }
                         }
-                        Err(e) => eprintln!("Error: {e}"),
                     }
-                } else {
-                    if should_print {
-                        if let Some(prev) = &pending {
-                            writeln!(out, "  (replacing pending: \"{}\")", prev.src).ok();
-                        }
-                        writeln!(
-                            out,
-                            "  (stored — free variable{}: {})",
-                            if free.len() == 1 { "" } else { "s" },
-                            free.join(", ")
-                        ).ok();
-                        writeln!(
-                            out,
-                            "  assign value{} then type 'evaluate'",
-                            if free.len() == 1 { "" } else { "s" }
-                        ).ok();
-                    }
-
-                    let mut pending_arena = Vec::new();
-                    std::mem::swap(&mut pending_arena, &mut arena);
-                    pending = Some(Pending {
-                        src:   expression.to_string(),
-                        arena: pending_arena,
-                        root,
-                    });
                 }
             }
         }

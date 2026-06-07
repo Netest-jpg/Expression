@@ -8,52 +8,52 @@
 "Mtu": "s",
 "tuth": 10,
 "cmd": "target/release/expression",
-"pid": 54137,
-"tg": 547,
-"te": 239198,
+"pid": 88901,
+"tg": 44880,
+"te": 285348,
 "pps": [
 {
-"tb": 8192,
+"tb": 1024,
 "tbk": 1,
-"tl": 238846,
-"mb": 8192,
+"tl": 285249,
+"mb": 1024,
 "mbk": 1,
-"gb": 8192,
+"gb": 1024,
 "gbk": 1,
-"eb": 8192,
+"eb": 1024,
 "ebk": 1,
 "fs": [
 1,
 2,
 3,
 4,
-5,
-6
+5
 ]
 },
 {
 "tb": 64,
 "tbk": 1,
-"tl": 238767,
+"tl": 285206,
 "mb": 64,
 "mbk": 1,
 "gb": 64,
 "gbk": 1,
-"eb": 0,
-"ebk": 0,
+"eb": 64,
+"ebk": 1,
 "fs": [
 1,
+6,
 7
 ]
 },
 {
-"tb": 912,
-"tbk": 1,
-"tl": 238722,
-"mb": 912,
-"mbk": 1,
-"gb": 912,
-"gbk": 1,
+"tb": 1344,
+"tbk": 6,
+"tl": 480913,
+"mb": 768,
+"mbk": 2,
+"gb": 768,
+"gbk": 2,
 "eb": 0,
 "ebk": 0,
 "fs": [
@@ -61,28 +61,14 @@
 8,
 9,
 10,
-11
-]
-},
-{
-"tb": 65536,
-"tbk": 1,
-"tl": 238872,
-"mb": 65536,
-"mbk": 1,
-"gb": 65536,
-"gbk": 1,
-"eb": 0,
-"ebk": 0,
-"fs": [
-1,
+11,
 12
 ]
 },
 {
 "tb": 25,
 "tbk": 1,
-"tl": 28,
+"tl": 20,
 "mb": 25,
 "mbk": 1,
 "gb": 0,
@@ -96,9 +82,106 @@
 ]
 },
 {
+"tb": 64,
+"tbk": 1,
+"tl": 285231,
+"mb": 64,
+"mbk": 1,
+"gb": 64,
+"gbk": 1,
+"eb": 64,
+"ebk": 1,
+"fs": [
+1,
+6,
+15,
+16
+]
+},
+{
+"tb": 64,
+"tbk": 1,
+"tl": 285174,
+"mb": 64,
+"mbk": 1,
+"gb": 64,
+"gbk": 1,
+"eb": 0,
+"ebk": 0,
+"fs": [
+1,
+17
+]
+},
+{
+"tb": 1440,
+"tbk": 2,
+"tl": 240477,
+"mb": 960,
+"mbk": 1,
+"gb": 960,
+"gbk": 1,
+"eb": 0,
+"ebk": 0,
+"fs": [
+1,
+8,
+18,
+19,
+20
+]
+},
+{
+"tb": 37,
+"tbk": 1,
+"tl": 240457,
+"mb": 37,
+"mbk": 1,
+"gb": 37,
+"gbk": 1,
+"eb": 0,
+"ebk": 0,
+"fs": [
+1,
+8,
+18,
+21
+]
+},
+{
+"tb": 65536,
+"tbk": 1,
+"tl": 285221,
+"mb": 65536,
+"mbk": 1,
+"gb": 65536,
+"gbk": 1,
+"eb": 0,
+"ebk": 0,
+"fs": [
+1,
+22
+]
+},
+{
+"tb": 256,
+"tbk": 1,
+"tl": 285169,
+"mb": 256,
+"mbk": 1,
+"gb": 256,
+"gbk": 1,
+"eb": 0,
+"ebk": 0,
+"fs": [
+1,
+23
+]
+},
+{
 "tb": 24,
 "tbk": 1,
-"tl": 47,
+"tl": 27,
 "mb": 24,
 "mbk": 1,
 "gb": 0,
@@ -107,67 +190,14 @@
 "ebk": 0,
 "fs": [
 1,
-15,
+24,
 14
-]
-},
-{
-"tb": 1024,
-"tbk": 1,
-"tl": 238943,
-"mb": 1024,
-"mbk": 1,
-"gb": 1024,
-"gbk": 1,
-"eb": 1024,
-"ebk": 1,
-"fs": [
-1,
-16,
-3,
-17,
-18,
-19
-]
-},
-{
-"tb": 64,
-"tbk": 1,
-"tl": 238895,
-"mb": 64,
-"mbk": 1,
-"gb": 64,
-"gbk": 1,
-"eb": 64,
-"ebk": 1,
-"fs": [
-1,
-20,
-21,
-22
-]
-},
-{
-"tb": 64,
-"tbk": 1,
-"tl": 238825,
-"mb": 64,
-"mbk": 1,
-"gb": 64,
-"gbk": 1,
-"eb": 64,
-"ebk": 1,
-"fs": [
-1,
-20,
-23,
-24
 ]
 },
 {
 "tb": 65536,
 "tbk": 1,
-"tl": 238800,
+"tl": 285189,
 "mb": 65536,
 "mbk": 1,
 "gb": 65536,
@@ -180,55 +210,53 @@
 ]
 },
 {
-"tb": 448,
-"tbk": 3,
-"tl": 238635,
-"mb": 256,
+"tb": 8192,
+"tbk": 1,
+"tl": 285213,
+"mb": 8192,
 "mbk": 1,
-"gb": 256,
+"gb": 8192,
 "gbk": 1,
-"eb": 0,
-"ebk": 0,
+"eb": 8192,
+"ebk": 1,
 "fs": [
 1,
-8,
 26,
+3,
 27,
-28,
-29
+28
 ]
 }
 ],
 "ftbl": [
 "[root]",
-"0x1023b05f0: <dhat::Alloc as core::alloc::global::GlobalAlloc>::alloc (???:0:0)",
-"0x1023eef6c: <std::sync::once::Once>::call_once_force::<<std::sync::once_lock::OnceLock<std::sync::poison::mutex::Mutex<std::io::buffered::bufreader::BufReader<std::io::stdio::StdinRaw>>>>::initialize<<std::sync::once_lock::OnceLock<std::sync::poison::mutex::Mutex<std::io::buffered::bufreader::BufReader<std::io::stdio::StdinRaw>>>>::get_or_init<std::io::stdio::stdin::{closure#0}>::{closure#0}, !>::{closure#0}>::{closure#0} (???:0:0)",
-"0x10241f27c: <std::sys::sync::once::queue::Once>::call (???:0:0)",
-"0x10241ec64: <std::sync::once_lock::OnceLock<std::sync::poison::mutex::Mutex<std::io::buffered::bufreader::BufReader<std::io::stdio::StdinRaw>>>>::initialize::<<std::sync::once_lock::OnceLock<std::sync::poison::mutex::Mutex<std::io::buffered::bufreader::BufReader<std::io::stdio::StdinRaw>>>>::get_or_init<std::io::stdio::stdin::{closure#0}>::{closure#0}, !> (???:0:0)",
-"0x1023fcfb4: std::io::stdio::stdin (???:0:0)",
-"0x1023a8adc: expression::main (???:0:0)",
-"0x1023a8c5c: expression::main (???:0:0)",
-"0x102418844: alloc::raw_vec::RawVecInner<A>::finish_grow (???:0:0)",
-"0x1024188ec: alloc::raw_vec::RawVecInner<A>::reserve::do_reserve_and_handle (???:0:0)",
-"0x1023ab9ec: expression::lexer::Tokenizer::tokenize (???:0:0)",
-"0x1023a8e44: expression::main (???:0:0)",
-"0x1023a8ac0: expression::main (???:0:0)",
-"0x1023fc384: std::env::args_os (???:0:0)",
-"0x1023a8988: expression::main (???:0:0)",
-"0x1023fc31c: std::env::args_os (???:0:0)",
-"0x1023eee9c: <std::sync::once::Once>::call_once_force::<<std::sync::once_lock::OnceLock<std::sync::reentrant_lock::ReentrantLock<core::cell::RefCell<std::io::buffered::linewriter::LineWriter<std::io::stdio::StdoutRaw>>>>>::initialize<<std::sync::once_lock::OnceLock<std::sync::reentrant_lock::ReentrantLock<core::cell::RefCell<std::io::buffered::linewriter::LineWriter<std::io::stdio::StdoutRaw>>>>>::get_or_init<std::io::stdio::stdout::{closure#0}>::{closure#0}, !>::{closure#0}>::{closure#0} (???:0:0)",
-"0x10241eba8: <std::sync::once_lock::OnceLock<std::sync::reentrant_lock::ReentrantLock<core::cell::RefCell<std::io::buffered::linewriter::LineWriter<std::io::stdio::StdoutRaw>>>>>::initialize::<<std::sync::once_lock::OnceLock<std::sync::reentrant_lock::ReentrantLock<core::cell::RefCell<std::io::buffered::linewriter::LineWriter<std::io::stdio::StdoutRaw>>>>>::get_or_init<std::io::stdio::stdout::{closure#0}>::{closure#0}, !> (???:0:0)",
-"0x1023fcfec: std::io::stdio::stdout (???:0:0)",
-"0x1023a8a98: expression::main (???:0:0)",
-"0x10241ecbc: <std::sys::sync::once_box::OnceBox<std::sys::pal::unix::sync::mutex::Mutex>>::initialize::<<std::sys::sync::mutex::pthread::Mutex>::get::{closure#0}> (???:0:0)",
-"0x1023f5fa0: <std::io::stdio::Stderr>::lock (???:0:0)",
-"0x1023a8aa4: expression::main (???:0:0)",
-"0x1023f2948: <std::io::stdio::Stdin>::lock (???:0:0)",
-"0x1023a8ae8: expression::main (???:0:0)",
-"0x1023a8b08: expression::main (???:0:0)",
-"0x102418790: alloc::raw_vec::RawVec<T,A>::grow_one (???:0:0)",
-"0x1023acc7c: expression::parser::Parser::parse_expr (???:0:0)",
-"0x1023acb08: expression::parser::Parser::parse_expr (???:0:0)",
-"0x1023a92b4: expression::main (???:0:0)"
+"0x1009da2c8: <dhat::Alloc as core::alloc::global::GlobalAlloc>::alloc (???:0:0)",
+"0x100a0bcd4: <std::sync::once::Once>::call_once_force::<<std::sync::once_lock::OnceLock<std::sync::reentrant_lock::ReentrantLock<core::cell::RefCell<std::io::buffered::linewriter::LineWriter<std::io::stdio::StdoutRaw>>>>>::initialize<<std::sync::once_lock::OnceLock<std::sync::reentrant_lock::ReentrantLock<core::cell::RefCell<std::io::buffered::linewriter::LineWriter<std::io::stdio::StdoutRaw>>>>>::get_or_init<std::io::stdio::stdout::{closure#0}>::{closure#0}, !>::{closure#0}>::{closure#0} (???:0:0)",
+"0x100a2b480: <std::sys::sync::once::queue::Once>::call (???:0:0)",
+"0x100a2ad34: <std::sync::once_lock::OnceLock<std::sync::reentrant_lock::ReentrantLock<core::cell::RefCell<std::io::buffered::linewriter::LineWriter<std::io::stdio::StdoutRaw>>>>>::initialize::<<std::sync::once_lock::OnceLock<std::sync::reentrant_lock::ReentrantLock<core::cell::RefCell<std::io::buffered::linewriter::LineWriter<std::io::stdio::StdoutRaw>>>>>::get_or_init<std::io::stdio::stdout::{closure#0}>::{closure#0}, !> (???:0:0)",
+"0x1009e9420: expression::main (???:0:0)",
+"0x100a2ae4c: <std::sys::sync::once_box::OnceBox<std::sys::pal::unix::sync::mutex::Mutex>>::initialize::<<std::sys::sync::mutex::pthread::Mutex>::get::{closure#0}> (???:0:0)",
+"0x1009e9438: expression::main (???:0:0)",
+"0x100a278fc: alloc::raw_vec::RawVecInner<A>::finish_grow (???:0:0)",
+"0x100a27848: alloc::raw_vec::RawVec<T,A>::grow_one (???:0:0)",
+"0x1009e4124: expression::parser::Parser::parse_expr (???:0:0)",
+"0x1009e3fb8: expression::parser::Parser::parse_expr (???:0:0)",
+"0x1009e6a14: expression::main (???:0:0)",
+"0x100a192c4: std::env::args_os (???:0:0)",
+"0x1009e5df0: expression::main (???:0:0)",
+"0x100a13008: <std::io::stdio::Stdout>::lock (???:0:0)",
+"0x1009e5f18: expression::main (???:0:0)",
+"0x1009e616c: expression::main (???:0:0)",
+"0x100a279a4: alloc::raw_vec::RawVecInner<A>::reserve::do_reserve_and_handle (???:0:0)",
+"0x1009ec93c: expression::lexer::Tokenizer::tokenize (???:0:0)",
+"0x1009e64b8: expression::main (???:0:0)",
+"0x1009e8dd4: expression::main (???:0:0)",
+"0x1009e5f30: expression::main (???:0:0)",
+"0x1009e61a0: expression::main (???:0:0)",
+"0x100a19254: std::env::args_os (???:0:0)",
+"0x1009e5fa4: expression::main (???:0:0)",
+"0x100a0bda8: <std::sync::once::Once>::call_once_force::<<std::sync::once_lock::OnceLock<std::sync::poison::mutex::Mutex<std::io::buffered::bufreader::BufReader<std::io::stdio::StdinRaw>>>>::initialize<<std::sync::once_lock::OnceLock<std::sync::poison::mutex::Mutex<std::io::buffered::bufreader::BufReader<std::io::stdio::StdinRaw>>>>::get_or_init<std::io::stdio::stdin::{closure#0}>::{closure#0}, !>::{closure#0}>::{closure#0} (???:0:0)",
+"0x100a2adf0: <std::sync::once_lock::OnceLock<std::sync::poison::mutex::Mutex<std::io::buffered::bufreader::BufReader<std::io::stdio::StdinRaw>>>>::initialize::<<std::sync::once_lock::OnceLock<std::sync::poison::mutex::Mutex<std::io::buffered::bufreader::BufReader<std::io::stdio::StdinRaw>>>>::get_or_init<std::io::stdio::stdin::{closure#0}>::{closure#0}, !> (???:0:0)",
+"0x1009e9428: expression::main (???:0:0)"
 ]
 }

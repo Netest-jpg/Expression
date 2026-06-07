@@ -218,7 +218,12 @@ impl<'src> Tokenizer<'src> {
 
     pub fn tokenize(&mut self, tokens: &mut Vec<Token>) -> Result<(), String> {
         tokens.clear();
-        tokens.reserve(self.src.len() + 1);
+        // Typical token is 2-3 chars; src.len()/2+2 avoids the large
+        // over-allocation that src.len()+1 causes for identifier-heavy input.
+        let hint = self.src.len() / 2 + 2;
+        if tokens.capacity() < hint {
+            tokens.reserve(hint - tokens.len());
+        }
         loop {
             let byte = match self.current() {
                 None => {
