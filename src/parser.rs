@@ -586,8 +586,8 @@ fn newton(f: &mut impl FnMut(f64) -> Result<f64, String>, x0: f64) -> Result<f64
     const H: f64 = 1e-7;
 
     let mut x = x0;
+    let mut fx = f(x)?;
     for _ in 0..MAX_ITER {
-        let fx = f(x)?;
         if fx.abs() < TOL {
             return Ok(x);
         }
@@ -600,6 +600,7 @@ fn newton(f: &mut impl FnMut(f64) -> Result<f64, String>, x0: f64) -> Result<f64
             return Ok(x_new);
         }
         x = x_new;
+        fx = f(x)?;
     }
     Err("did not converge".to_string())
 }
