@@ -352,6 +352,12 @@ fn main() {
         }
 
         arena.clear();
+        // Reserve before parsing: node count can never exceed token count, so
+        // this single reserve eliminates all the repeated grow-reallocations
+        // that dhat PP 1.1.1 flagged (6 allocs across recursive parse_expr calls).
+        // On subsequent REPL iterations the Vec already has sufficient capacity
+        // and reserve() becomes a no-op — no wasted work.
+        arena.reserve(tokens.len());
         let root = match Parser::new(&tokens, expression, &mut arena).parse() {
             Err(e) => {
                 eprintln!("Error: {e}");
