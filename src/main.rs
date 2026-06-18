@@ -211,14 +211,17 @@ fn main() {
     let should_print = is_terminal || verbose;
 
     if verbose {
-        writeln!(out, "Debug mode ON").ok();
+        out.write_all(b"Debug mode ON\n").ok();
     }
     if should_print {
-        writeln!(out, "Enter a math expression:").ok();
-        writeln!(out, "[ use 'quit' / 'exit' / ':q' to exit ]").ok();
-        writeln!(out, "[ type 'evaluate' to solve the pending equation ]").ok();
-        writeln!(out, "[ type 'clear' to reset all variable bindings ]").ok();
-        writeln!(out).ok();
+        out.write_all(
+            b"Enter a math expression:\n\
+              [ use 'quit' / 'exit' / ':q' to exit ]\n\
+              [ use 'evaluate' to solve the pending equation ]\n\
+              [ use 'clear' to reset all variable bindings ]\n\
+              \n",
+        )
+        .ok();
     }
 
     let mut line = String::with_capacity(64);
