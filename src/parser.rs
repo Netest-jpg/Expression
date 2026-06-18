@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::lexer::{Token, KW_COS, KW_E, KW_LN, KW_LOG, KW_PI, KW_SIN, KW_SQRT, KW_TAN};
+use crate::lexer::{KW_COS, KW_E, KW_LN, KW_LOG, KW_PI, KW_SIN, KW_SQRT, KW_TAN, Token};
 use fast_float2 as fast_float;
 
 #[repr(u8)]
@@ -264,19 +264,21 @@ impl<'src, 'arena> Parser<'src, 'arena> {
 pub const VAR_STORE_LIMIT: usize = 64;
 
 pub struct VarStore {
-    entries: Vec<(u64, f64)>, // (name hash, value)
+    entries: [(u64, f64); VAR_STORE_LIMIT], // fixed stack/inline array — no heap
+    len: usize,
 }
 
 impl VarStore {
     pub fn new() -> Self {
         VarStore {
-            entries: Vec::with_capacity(16),
+            entries: [(0u64, 0.0f64); VAR_STORE_LIMIT],
+            len: 0,
         }
     }
 
     #[inline(always)]
     pub fn get(&self, hash: u64) -> Option<f64> {
-        self.entries
+        self.entries[..self.len]
             .iter()
             .find(|(h, _)| *h == hash)
             .map(|(_, v)| *v)
@@ -285,47 +287,58 @@ impl VarStore {
     /// Insert or update. Returns Err if the store is full and the key is new.
     #[inline(always)]
     pub fn set(&mut self, hash: u64, value: f64) -> Result<(), String> {
-        if let Some(entry) = self.entries.iter_mut().find(|(h, _)| *h == hash) {
+        if let Some(entry) = self.entries[..self.len]
+            .iter_mut()
+            .find(|(h, _)| *h == hash)
+        {
             entry.1 = value;
             return Ok(());
         }
-        if self.entries.len() >= VAR_STORE_LIMIT {
+        if self.len >= VAR_STORE_LIMIT {
             return Err(format!(
                 "variable limit ({VAR_STORE_LIMIT}) reached; clear some variables first"
             ));
         }
-        self.entries.push((hash, value));
+        self.entries[self.len] = (hash, value);
+        self.len += 1;
         Ok(())
     }
 
     #[inline(always)]
     pub fn clear(&mut self) {
-        self.entries.clear();
+        self.len = 0;
     }
 
-    /// Clone all current bindings and push one extra slot for `hash`.
+    /// Clone all current bindings and add one extra slot for `hash`.
     /// The unknown's value is left as 0.0; call `set_last` to update it.
-    /// Used by the Newton solver: one allocation before the loop, then
-    /// `set_last` updates the single f64 each iteration — no further allocs.
+    /// Used by the Newton solver: one stack copy before the loop, then
+    /// `set_last` updates the single f64 each iteration — zero heap allocs.
     pub fn clone_for_probe(&self, hash: u64) -> VarStore {
         let mut probe = VarStore {
-            entries: self.entries.clone(),
+            entries: self.entries,
+            len: self.len,
         };
         // If the hash already exists (unlikely for a free var), update it;
-        // otherwise push a new slot that set_last will overwrite.
-        if let Some(e) = probe.entries.iter_mut().find(|(h, _)| *h == hash) {
+        // otherwise append a new slot that set_last will overwrite.
+        if let Some(e) = probe.entries[..probe.len]
+            .iter_mut()
+            .find(|(h, _)| *h == hash)
+        {
             e.1 = 0.0;
         } else {
-            probe.entries.push((hash, 0.0));
+            // len < VAR_STORE_LIMIT is guaranteed: the free var is unbound,
+            // so it cannot already occupy one of the len filled slots.
+            probe.entries[probe.len] = (hash, 0.0);
+            probe.len += 1;
         }
         probe
     }
 
     /// Update the value of the last entry (the unknown slot created by
-    /// `clone_for_probe`).  Panics if entries is empty.
+    /// `clone_for_probe`).  Panics if len is 0.
     #[inline(always)]
     pub fn set_last(&mut self, value: f64) {
-        self.entries.last_mut().unwrap().1 = value;
+        self.entries[self.len - 1].1 = value;
     }
 }
 
@@ -775,11 +788,14 @@ mod tests {
     #[test]
     fn test_varstore_limit() {
         let mut vars = VarStore::new();
+        // Fill all VAR_STORE_LIMIT slots with distinct hashes.
         for i in 0..VAR_STORE_LIMIT {
-            vars.set(i as u64, i as f64).unwrap();
+            vars.set(i as u64 + 1, i as f64).unwrap(); // hash 0 is the zero-init sentinel; use 1..=64
         }
+        // One more new key must be rejected.
         assert!(vars.set(VAR_STORE_LIMIT as u64 + 1, 1.0).is_err());
-        vars.set(0u64, 99.0).unwrap(); // update existing: always ok
+        // Updating an existing key is always ok.
+        vars.set(1u64, 99.0).unwrap();
     }
 
     #[test]

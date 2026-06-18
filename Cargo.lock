@@ -66,6 +66,7 @@ version = "0.1.0"
 dependencies = [
  "dhat",
  "fast-float2",
+ "itoa",
  "zmij",
 ]
 

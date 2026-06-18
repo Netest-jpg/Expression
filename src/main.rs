@@ -4,12 +4,13 @@ mod parser;
 use std::io::IsTerminal;
 use std::io::{BufRead, BufWriter, Write};
 
+use itoa;
 use zmij::Buffer as DtoaBuffer;
 
 use lexer::{Token, Tokenizer};
 use parser::{
-    collect_vars, eval, evaluate_pending, try_simple_assign, EvalResultKind, Node, NodeKind,
-    Parser, VarStore,
+    EvalResultKind, Node, NodeKind, Parser, VarStore, collect_vars, eval, evaluate_pending,
+    try_simple_assign,
 };
 #[cfg(feature = "dhat-heap")]
 #[global_allocator]
@@ -67,7 +68,8 @@ fn write_tokens<W: Write>(
 #[inline(always)]
 fn write_value<W: Write>(out: &mut W, v: f64) -> std::io::Result<()> {
     if v.fract() == 0.0 && v.abs() < 1e15 {
-        write!(out, "{}", v as i64)
+        let mut buf = itoa::Buffer::new();
+        out.write_all(buf.format(v as i64).as_bytes())
     } else {
         let mut buf = DtoaBuffer::new();
         out.write_all(buf.format(v).as_bytes())
@@ -106,8 +108,16 @@ fn write_node_compact<W: Write>(out: &mut W, kind: &NodeKind, src: &str) -> std:
 
 fn write_node_verbose<W: Write>(out: &mut W, kind: &NodeKind, src: &str) -> std::io::Result<()> {
     match kind {
-        NodeKind::Number(v) => write!(out, "Number({v})"),
-        NodeKind::Constant(v) => write!(out, "Constant({v})"),
+        NodeKind::Number(v) => {
+            write!(out, "Number(")?;
+            write_value(out, *v)?;
+            write!(out, ")")
+        }
+        NodeKind::Constant(v) => {
+            write!(out, "Constant(")?;
+            write_value(out, *v)?;
+            write!(out, ")")
+        }
         NodeKind::Variable(s, e, _) => {
             write!(out, "Variable({:?})", &src[*s as usize..*e as usize])
         }
@@ -406,9 +416,9 @@ fn main() {
                         std::mem::swap(&mut pending_arena, &mut arena);
                         pending_src.clear();
                         pending_src.push_str(expression); // reuse heap, no alloc if cap sufficient
-                                                          // Safety: pending_src is not accessed while pending is live
-                                                          // because pending_src is only mutated here, before the new
-                                                          // Pending is constructed, and reclaimed from Pending above.
+                        // Safety: pending_src is not accessed while pending is live
+                        // because pending_src is only mutated here, before the new
+                        // Pending is constructed, and reclaimed from Pending above.
                         let src = std::mem::take(&mut pending_src);
                         pending = Some(Pending {
                             src: src,
