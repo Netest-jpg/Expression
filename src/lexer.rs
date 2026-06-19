@@ -19,31 +19,37 @@ fn fnv1a_update(hash: u64, byte: u8) -> u64 {
     (hash ^ byte as u64).wrapping_mul(FNV_PRIME)
 }
 
-const fn build_ident_table() -> [bool; 256] {
-    let mut t = [false; 256];
-    let mut c = b'a';
-    while c <= b'z' {
-        t[c as usize] = true;
-        c += 1;
-    }
-    let mut c = b'A';
-    while c <= b'Z' {
-        t[c as usize] = true;
-        c += 1;
-    }
+const fn build_ident_table() -> [u8; 32] {
+    let mut t = [0; 32];
+
     let mut c = b'0';
     while c <= b'9' {
-        t[c as usize] = true;
+        t[c as usize / 8] |= 1 << (c as usize % 8);
         c += 1;
     }
-    t[b'_' as usize] = true;
+
+    let mut c = b'A';
+    while c <= b'Z' {
+        t[c as usize / 8] |= 1 << (c as usize % 8);
+        c += 1;
+    }
+
+    t[b'_' as usize / 8] |= 1 << (b'_' as usize % 8);
+
+    let mut c = b'a';
+    while c <= b'z' {
+        t[c as usize / 8] |= 1 << (c as usize % 8);
+        c += 1;
+    }
+
     t
 }
-static IS_IDENT: [bool; 256] = build_ident_table();
+
+static IS_IDENT: [u8; 32] = build_ident_table();
 
 #[inline(always)]
 fn is_ident_char(c: u8) -> bool {
-    unsafe { *IS_IDENT.get_unchecked(c as usize) }
+    unsafe { (*IS_IDENT.get_unchecked(c as usize / 8) >> (c % 8)) & 1 != 0 }
 }
 
 #[repr(u8)]
@@ -241,7 +247,7 @@ impl<'src> Tokenizer<'src> {
                 Dispatch::Digit => {
                     let tok = self.read_number()?;
                     // implicit multiply: "2x" → Number Asterisk Identifier
-                    let implicit = self.current().map_or(false, |b| IS_IDENT[b as usize]);
+                    let implicit = self.current().map_or(false, |b| is_ident_char(b));
                     tokens.push(tok);
                     if implicit {
                         tokens.push(Token::Asterisk);
