@@ -116,11 +116,10 @@ static DISPATCH: [Dispatch; 256] = build_dispatch_table();
 // -----------------------------------------------------------------------
 #[derive(Clone, PartialEq)]
 pub enum Token {
-    /// Byte range in the source + FNV hash. Call `.raw(src)` when needed.
+    /// Byte range in the source. Call `.raw(src)` when needed.
     Number {
         start: u32,
         end: u32,
-        hash: u64,
     },
     Identifier {
         start: u32,
@@ -142,7 +141,7 @@ impl Token {
     #[inline(always)]
     pub fn raw<'src>(&self, src: &'src str) -> &'src str {
         match self {
-            Token::Number { start, end, .. } => &src[*start as usize..*end as usize],
+            Token::Number { start, end } => &src[*start as usize..*end as usize],
             _ => panic!("Token::raw called on non-Number token"),
         }
     }
@@ -175,7 +174,7 @@ impl Token {
 impl std::fmt::Debug for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Token::Number { start, end, .. } => write!(f, "Number([{start}..{end}])"),
+            Token::Number { start, end } => write!(f, "Number([{start}..{end}])"),
             Token::Identifier { start, end, .. } => write!(f, "Identifier([{start}..{end}])"),
             Token::Plus => write!(f, "Plus"),
             Token::Minus => write!(f, "Minus"),
@@ -302,18 +301,15 @@ impl<'src> Tokenizer<'src> {
     #[inline(always)]
     fn read_number(&mut self) -> Result<Token, String> {
         let start = self.pos as u32;
-        let mut hash = FNV_OFFSET_BASIS;
         let mut dot_seen = false;
         let mut digit_seen = false;
 
         while let Some(b) = self.current() {
             if b.is_ascii_digit() {
                 digit_seen = true;
-                hash = fnv1a_update(hash, b);
                 self.advance();
             } else if b == b'.' && !dot_seen {
                 dot_seen = true;
-                hash = fnv1a_update(hash, b);
                 self.advance();
             } else if b == b'.' {
                 let so_far = std::str::from_utf8(&self.src[start as usize..self.pos]).unwrap();
@@ -333,7 +329,6 @@ impl<'src> Tokenizer<'src> {
         Ok(Token::Number {
             start,
             end: self.pos as u32,
-            hash,
         })
     }
 
@@ -386,7 +381,7 @@ mod tests {
         let src = "3.14";
         let (tokens, _) = tok(src);
         match tokens[0] {
-            Token::Number { start, end, .. } => {
+            Token::Number { start, end } => {
                 assert_eq!(&src[start as usize..end as usize], "3.14");
                 assert!((tokens[0].as_f64(src) - 3.14).abs() < 1e-10);
             }

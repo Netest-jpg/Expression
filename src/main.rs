@@ -26,7 +26,7 @@ fn write_tokens<W: Write>(
     for tok in tokens {
         match tok {
             Token::EndOfFile => {}
-            Token::Number { start, end, .. } => {
+            Token::Number { start, end } => {
                 let s = &src[*start as usize..*end as usize];
                 if verbose {
                     write!(out, "\n  Number({s})")?;

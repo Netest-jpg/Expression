@@ -158,7 +158,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     fn nud(&mut self) -> Result<u32, String> {
         let tok = self.advance();
         match tok {
-            Token::Number { start, end, .. } => {
+            Token::Number { start, end } => {
                 let raw = &self.src[start as usize..end as usize];
                 let v = fast_float::parse::<f64, _>(raw)
                     .map_err(|e| format!("invalid number '{}': {}", raw, e))?;
