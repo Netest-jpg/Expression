@@ -246,7 +246,7 @@ impl<'src> Tokenizer<'src> {
                 Dispatch::Digit => {
                     let tok = self.read_number()?;
                     // implicit multiply: "2x" → Number Asterisk Identifier
-                    let implicit = self.current().map_or(false, |b| is_ident_char(b));
+                    let implicit = self.current().is_some_and(is_ident_char);
                     tokens.push(tok);
                     if implicit {
                         tokens.push(Token::Asterisk);
@@ -383,7 +383,7 @@ mod tests {
         match tokens[0] {
             Token::Number { start, end } => {
                 assert_eq!(&src[start as usize..end as usize], "3.14");
-                assert!((tokens[0].as_f64(src) - 3.14).abs() < 1e-10);
+                assert!((tokens[0].as_f64(src) - 314.0 / 100.0).abs() < 1e-10);
             }
             _ => panic!("expected Number"),
         }

@@ -1,17 +1,12 @@
-mod lexer;
-mod parser;
-
 use std::io::IsTerminal;
 use std::io::{BufRead, BufWriter, Write};
 
-use itoa;
-use zmij::Buffer as DtoaBuffer;
-
-use lexer::{Token, Tokenizer};
-use parser::{
-    EvalResultKind, Node, NodeKind, Parser, VarStore, collect_vars, eval, evaluate_pending,
-    try_simple_assign,
+use expression::lexer::{Token, Tokenizer};
+use expression::parser::{
+    EvalError, EvalResultKind, Node, NodeKind, Parser, VarStore, collect_vars, eval,
+    evaluate_pending, try_simple_assign,
 };
+use zmij::Buffer as DtoaBuffer;
 #[cfg(feature = "dhat-heap")]
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
@@ -167,9 +162,9 @@ impl Pending {
     /// Return the names of variables in this equation that are still unbound.
     fn free_var_names<'a>(&'a self, vars: &VarStore) -> Vec<&'a str> {
         collect_vars(&self.arena, self.root)
-            .into_iter()
+            .iter()
             .filter(|(h, _, _)| vars.get(*h).is_none())
-            .map(|(_, s, e)| &self.src[s as usize..e as usize])
+            .map(|(_, s, e)| &self.src[*s as usize..*e as usize])
             .collect()
     }
 
@@ -284,53 +279,40 @@ fn main() {
                 None => {
                     eprintln!("Error: nothing to evaluate — enter an equation first.");
                 }
-                Some(p) => {
-                    let free = p.free_var_names(&vars);
-                    if free.len() > 1 {
-                        eprintln!(
-                            "Error: cannot evaluate — {} variable{} still unassigned: {}.\n\
-                             Assign with  name=value  or leave exactly one free to solve for.",
-                            free.len(),
-                            if free.len() == 1 { "" } else { "s" },
-                            free.join(", ")
-                        );
-                    } else {
-                        match evaluate_pending(&p.arena, p.root, &vars, &p.src) {
-                            Err(e) => eprintln!("Error: {e}"),
-                            Ok(result) => {
-                                if should_print {
-                                    match result.kind {
-                                        EvalResultKind::Value(v) => {
-                                            write!(out, "  = ").ok();
-                                            write_value(&mut out, v).ok();
-                                            writeln!(out).ok();
-                                        }
-                                        EvalResultKind::Verified { lhs, rhs } => {
-                                            if (lhs - rhs).abs() < 1e-9 {
-                                                write!(out, "  ✓  ").ok();
-                                                write_value(&mut out, lhs).ok();
-                                                write!(out, " = ").ok();
-                                                write_value(&mut out, rhs).ok();
-                                                writeln!(out, "  (true)").ok();
-                                            } else {
-                                                write!(out, "  ✗  ").ok();
-                                                write_value(&mut out, lhs).ok();
-                                                write!(out, " ≠ ").ok();
-                                                write_value(&mut out, rhs).ok();
-                                                writeln!(out, "  (false)").ok();
-                                            }
-                                        }
-                                        EvalResultKind::Solved { name, value } => {
-                                            write!(out, "  {} = ", name).ok();
-                                            write_value(&mut out, value).ok();
-                                            writeln!(out).ok();
-                                        }
+                Some(p) => match evaluate_pending(&p.arena, p.root, &vars, &p.src) {
+                    Err(e) => eprintln!("Error: {e}"),
+                    Ok(result) => {
+                        if should_print {
+                            match result.kind {
+                                EvalResultKind::Value(v) => {
+                                    write!(out, "  = ").ok();
+                                    write_value(&mut out, v).ok();
+                                    writeln!(out).ok();
+                                }
+                                EvalResultKind::Verified { lhs, rhs } => {
+                                    if (lhs - rhs).abs() < 1e-9 {
+                                        write!(out, "  ✓  ").ok();
+                                        write_value(&mut out, lhs).ok();
+                                        write!(out, " = ").ok();
+                                        write_value(&mut out, rhs).ok();
+                                        writeln!(out, "  (true)").ok();
+                                    } else {
+                                        write!(out, "  ✗  ").ok();
+                                        write_value(&mut out, lhs).ok();
+                                        write!(out, " ≠ ").ok();
+                                        write_value(&mut out, rhs).ok();
+                                        writeln!(out, "  (false)").ok();
                                     }
+                                }
+                                EvalResultKind::Solved { name, value } => {
+                                    write!(out, "  {} = ", name).ok();
+                                    write_value(&mut out, value).ok();
+                                    writeln!(out).ok();
                                 }
                             }
                         }
                     }
-                }
+                },
             }
             if is_terminal {
                 writeln!(out).ok();
@@ -385,15 +367,16 @@ fn main() {
             // if the lhs is complex or rhs has free vars, store as pending.
             // -----------------------------------------------------------------
             NodeKind::Equation(_, _) => {
-                match try_simple_assign(&arena, root, &mut vars, expression) {
+                match try_simple_assign(&arena, root, &mut vars) {
                     Err(e) => {
                         eprintln!("Error: {e}");
                     }
 
-                    Ok(Some((name, value))) => {
+                    Ok(Some((start, end, value))) => {
                         // x = <number>: stored in VarStore.
                         // Then show how this affects the pending equation.
                         if should_print {
+                            let name = &expression[start as usize..end as usize];
                             write!(out, "  {} = ", name).ok();
                             write_value(&mut out, value).ok();
                             writeln!(out).ok();
@@ -407,10 +390,8 @@ fn main() {
                         // Complex equation (e.g. x^2+2x = 3).
                         // Warn if we are replacing an existing pending equation,
                         // then store and report which variables are still free.
-                        if should_print {
-                            if let Some(prev) = &pending {
-                                writeln!(out, "  (replacing pending: \"{}\")", prev.src).ok();
-                            }
+                        if should_print && let Some(prev) = &pending {
+                            writeln!(out, "  (replacing pending: \"{}\")", prev.src).ok();
                         }
 
                         // Reclaim the old pending_src buffer (if any) so its heap
@@ -430,7 +411,7 @@ fn main() {
                         // Pending is constructed, and reclaimed from Pending above.
                         let src = std::mem::take(&mut pending_src);
                         pending = Some(Pending {
-                            src: src,
+                            src,
                             arena: pending_arena,
                             root,
                         });
@@ -480,7 +461,7 @@ fn main() {
                     // unbound variables (store as pending) from real errors.
                     Err(e) => {
                         match e {
-                            parser::EvalError::UnboundVariable => {
+                            EvalError::UnboundVariable => {
                                 if should_print {
                                     if let Some(prev) = &pending {
                                         writeln!(out, "  (replacing pending: \"{}\")", prev.src)
@@ -520,7 +501,7 @@ fn main() {
                                 pending_src.push_str(expression); // reuse heap, no alloc if cap sufficient
                                 let src = std::mem::take(&mut pending_src);
                                 pending = Some(Pending {
-                                    src: src,
+                                    src,
                                     arena: pending_arena,
                                     root,
                                 });

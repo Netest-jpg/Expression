@@ -342,22 +342,103 @@ impl VarStore {
     }
 }
 
+impl Default for VarStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 // -----------------------------------------------------------------------
 // Variable collection — walk the tree and gather unique identifiers.
-// Returns Vec<(hash, start, end)> deduplicated by hash.
+// Returns a fixed-size stack/inline list deduplicated by hash.
 // -----------------------------------------------------------------------
-pub fn collect_vars(arena: &[Node], root: u32) -> Vec<(u64, u32, u32)> {
-    let mut out: Vec<(u64, u32, u32)> = Vec::new();
+pub struct VarList {
+    entries: [(u64, u32, u32); VAR_STORE_LIMIT],
+    len: usize,
+    overflowed: bool,
+}
+
+impl VarList {
+    pub fn new() -> Self {
+        VarList {
+            entries: [(0, 0, 0); VAR_STORE_LIMIT],
+            len: 0,
+            overflowed: false,
+        }
+    }
+
+    #[inline(always)]
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    #[inline(always)]
+    pub fn overflowed(&self) -> bool {
+        self.overflowed
+    }
+
+    #[inline(always)]
+    pub fn iter(&self) -> std::slice::Iter<'_, (u64, u32, u32)> {
+        self.entries[..self.len].iter()
+    }
+
+    #[inline(always)]
+    pub fn retain(&mut self, mut f: impl FnMut(&(u64, u32, u32)) -> bool) {
+        let mut out = 0;
+        for i in 0..self.len {
+            let entry = self.entries[i];
+            if f(&entry) {
+                self.entries[out] = entry;
+                out += 1;
+            }
+        }
+        self.len = out;
+    }
+
+    #[inline(always)]
+    fn push_unique(&mut self, hash: u64, start: u32, end: u32) {
+        if self.iter().any(|(h, _, _)| *h == hash) {
+            return;
+        }
+        if self.len < VAR_STORE_LIMIT {
+            self.entries[self.len] = (hash, start, end);
+            self.len += 1;
+        } else {
+            self.overflowed = true;
+        }
+    }
+}
+
+impl Default for VarList {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::ops::Index<usize> for VarList {
+    type Output = (u64, u32, u32);
+
+    #[inline(always)]
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.entries[..self.len][index]
+    }
+}
+
+pub fn collect_vars(arena: &[Node], root: u32) -> VarList {
+    let mut out = VarList::new();
     collect_vars_inner(arena, root, &mut out);
     out
 }
 
-fn collect_vars_inner(arena: &[Node], idx: u32, out: &mut Vec<(u64, u32, u32)>) {
+fn collect_vars_inner(arena: &[Node], idx: u32, out: &mut VarList) {
     match &arena[idx as usize].kind {
         NodeKind::Variable(start, end, hash) => {
-            if !out.iter().any(|(h, _, _)| h == hash) {
-                out.push((*hash, *start, *end));
-            }
+            out.push_unique(*hash, *start, *end);
         }
         NodeKind::Number(_) | NodeKind::Constant(_) => {}
         NodeKind::Neg(a)
@@ -448,33 +529,30 @@ pub fn eval(arena: &[Node], idx: u32, vars: &VarStore) -> Result<f64, EvalError>
 // Simple variable assignment: `x = <expr with no free vars>`.
 //
 // Recognises Equation(Variable, rhs) where rhs contains no unbound
-// identifiers relative to `vars`. Returns (var_name_hash, value) on
-// success, or None if the root is not this shape (caller treats it as a
-// pending equation instead).
+// identifiers relative to `vars`. Returns (var_name_start, var_name_end,
+// value) on success, or None if the root is not this shape (caller treats it
+// as a pending equation instead).
 // -----------------------------------------------------------------------
 pub fn try_simple_assign(
     arena: &[Node],
     root: u32,
     vars: &mut VarStore,
-    src: &str,
-) -> Result<Option<(String, f64)>, String> {
+) -> Result<Option<(u32, u32, f64)>, String> {
     let NodeKind::Equation(lhs, rhs) = &arena[root as usize].kind else {
         return Ok(None); // not an equation at all
     };
     let (lhs, rhs) = (*lhs, *rhs);
 
     // lhs must be a plain variable
-    let (var_name, var_hash) = match &arena[lhs as usize].kind {
-        NodeKind::Variable(start, end, hash) => {
-            (src[*start as usize..*end as usize].to_string(), *hash)
-        }
+    let (var_start, var_end, var_hash) = match &arena[lhs as usize].kind {
+        NodeKind::Variable(start, end, hash) => (*start, *end, *hash),
         _ => return Ok(None), // complex lhs → treat as equation
     };
 
     // rhs must be fully evaluable right now
     let value = eval(arena, rhs, vars).map_err(|e| e.to_string_msg())?;
     vars.set(var_hash, value)?;
-    Ok(Some((var_name, value)))
+    Ok(Some((var_start, var_end, value)))
 }
 
 // -----------------------------------------------------------------------
@@ -518,8 +596,12 @@ pub fn evaluate_pending(
     };
 
     // Collect free variables (unbound in VarStore).
-    // Reuse a single Vec: collect_vars fills it, retain filters in place.
     let mut free = collect_vars(arena, root);
+    if free.overflowed() {
+        return Err(format!(
+            "cannot evaluate: variable limit ({VAR_STORE_LIMIT}) exceeded"
+        ));
+    }
     free.retain(|(hash, _, _)| vars.get(*hash).is_none());
 
     match free.len() {
@@ -703,10 +785,10 @@ mod tests {
         let src = "x=42";
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
-        let result = try_simple_assign(&arena, root, &mut vars, src).unwrap();
+        let result = try_simple_assign(&arena, root, &mut vars).unwrap();
         assert!(result.is_some());
-        let (name, val) = result.unwrap();
-        assert_eq!(name, "x");
+        let (start, end, val) = result.unwrap();
+        assert_eq!(&src[start as usize..end as usize], "x");
         assert!((val - 42.0).abs() < 1e-10);
     }
 
@@ -719,7 +801,7 @@ mod tests {
         let src = "x=3";
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
-        try_simple_assign(&arena, root, &mut vars, src).unwrap();
+        try_simple_assign(&arena, root, &mut vars).unwrap();
         // Eval x*x
         arena.clear();
         let src2 = "x*x";
