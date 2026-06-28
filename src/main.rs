@@ -1,11 +1,10 @@
 use std::io::IsTerminal;
 use std::io::{BufRead, BufWriter, Write};
 
+use expression::eval::{EvalError, EvalResultKind, eval, evaluate_pending, try_simple_assign};
 use expression::lexer::{Token, Tokenizer};
-use expression::parser::{
-    EvalError, EvalResultKind, Node, NodeKind, Parser, VarStore, collect_vars, eval,
-    evaluate_pending, try_simple_assign,
-};
+use expression::parser::{Node, NodeKind, Parser};
+use expression::vars::{VarStore, collect_vars};
 use zmij::Buffer as DtoaBuffer;
 #[cfg(feature = "dhat-heap")]
 #[global_allocator]
