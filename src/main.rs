@@ -252,7 +252,7 @@ fn main() {
         // ---- control words -------------------------------------------------
         if matches!(expression, "quit" | "exit" | ":q") {
             if should_print {
-                writeln!(out, "bye bye").ok();
+                writeln!(out, "program terminated").ok();
             }
             break;
         }
@@ -304,10 +304,23 @@ fn main() {
                                         writeln!(out, "  (false)").ok();
                                     }
                                 }
-                                EvalResultKind::Solved { name, value } => {
-                                    write!(out, "  {} = ", name).ok();
-                                    write_value(&mut out, value).ok();
-                                    writeln!(out).ok();
+                                EvalResultKind::Solved {
+                                    name,
+                                    values,
+                                    count,
+                                } => {
+                                    if count == 2 && (values[0] + values[1]).abs() < 1e-9 {
+                                        // Symmetric roots: show ±
+                                        write!(out, "  {} = ±", name).ok();
+                                        write_value(&mut out, values[0].abs()).ok();
+                                        writeln!(out).ok();
+                                    } else {
+                                        for i in 0..count as usize {
+                                            write!(out, "  {} = ", name).ok();
+                                            write_value(&mut out, values[i]).ok();
+                                            writeln!(out).ok();
+                                        }
+                                    }
                                 }
                             }
                         }

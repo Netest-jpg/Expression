@@ -573,7 +573,13 @@ pub enum EvalResultKind {
     /// All vars bound: lhs value and rhs value (should be equal for an equation).
     Verified { lhs: f64, rhs: f64 },
     /// One free var solved numerically.
-    Solved { name: String, value: f64 },
+    /// `values` holds 1 or 2 roots; a second root is included when `-solution`
+    /// also satisfies the equation (e.g. x^2 = 4 → [2, -2]).
+    Solved {
+        name: String,
+        values: [f64; 2],
+        count: u8,
+    },
     /// Expression (no `=`) evaluated to a single value.
     Value(f64),
 }
@@ -643,10 +649,24 @@ pub fn evaluate_pending(
                     format!("could not solve for '{name}'; try assigning an initial guess manually")
                 })?;
 
+            // Check whether -solution is also a root (e.g. x^2 = 4 → ±2).
+            // Two extra evaluations; no extra Newton runs.
+            const ROOT_TOL: f64 = 1e-6;
+            let neg = -solution;
+            let has_neg_root =
+                solution.abs() > ROOT_TOL && f(neg).map(|v| v.abs() < ROOT_TOL).unwrap_or(false);
+
+            let (values, count) = if has_neg_root {
+                ([solution, neg], 2u8)
+            } else {
+                ([solution, 0.0], 1u8)
+            };
+
             Ok(EvalResult {
                 kind: EvalResultKind::Solved {
                     name,
-                    value: solution,
+                    values,
+                    count,
                 },
             })
         }
@@ -831,9 +851,9 @@ mod tests {
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
         let result = evaluate_pending(&arena, root, &vars, src).unwrap();
-        if let EvalResultKind::Solved { name, value } = result.kind {
+        if let EvalResultKind::Solved { name, values, .. } = result.kind {
             assert_eq!(name, "x");
-            assert!((value - 3.0).abs() < 1e-8);
+            assert!((values[0] - 3.0).abs() < 1e-8);
         } else {
             panic!("expected Solved");
         }
@@ -849,8 +869,16 @@ mod tests {
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
         let result = evaluate_pending(&arena, root, &vars, src).unwrap();
-        if let EvalResultKind::Solved { value, .. } = result.kind {
-            assert!((value.abs() - 3.0).abs() < 1e-8);
+        if let EvalResultKind::Solved { values, count, .. } = result.kind {
+            assert_eq!(count, 2, "expected two roots for x^2=9");
+            for i in 0..count as usize {
+                assert!(
+                    (values[i].abs() - 3.0).abs() < 1e-8,
+                    "root {} = {} not ≈ ±3",
+                    i,
+                    values[i]
+                );
+            }
         } else {
             panic!("expected Solved");
         }
