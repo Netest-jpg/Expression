@@ -189,14 +189,44 @@ impl std::fmt::Debug for Token {
     }
 }
 
+pub const KW_LN: u64 = keyword_hash(b"ln");
+pub const KW_LOG: u64 = keyword_hash(b"log");
+
 pub const KW_SIN: u64 = keyword_hash(b"sin");
 pub const KW_COS: u64 = keyword_hash(b"cos");
 pub const KW_TAN: u64 = keyword_hash(b"tan");
-pub const KW_LN: u64 = keyword_hash(b"ln");
-pub const KW_LOG: u64 = keyword_hash(b"log");
+
+pub const KW_SEC: u64 = keyword_hash(b"sec");
+pub const KW_CSC: u64 = keyword_hash(b"csc");
+pub const KW_COT: u64 = keyword_hash(b"cot");
+
 pub const KW_SQRT: u64 = keyword_hash(b"sqrt");
 pub const KW_PI: u64 = keyword_hash(b"pi");
 pub const KW_E: u64 = keyword_hash(b"e");
+
+pub const KW_ASIN: u64 = keyword_hash(b"asin");
+pub const KW_ACOS: u64 = keyword_hash(b"acos");
+pub const KW_ATAN: u64 = keyword_hash(b"atan");
+
+pub const KW_ACSC: u64 = keyword_hash(b"acsc");
+pub const KW_ASEC: u64 = keyword_hash(b"asec");
+pub const KW_ACOT: u64 = keyword_hash(b"acot");
+
+pub const KW_SINH: u64 = keyword_hash(b"sinh");
+pub const KW_COSH: u64 = keyword_hash(b"cosh");
+pub const KW_TANH: u64 = keyword_hash(b"tanh");
+
+pub const KW_SECH: u64 = keyword_hash(b"sech");
+pub const KW_COTH: u64 = keyword_hash(b"coth");
+pub const KW_CSCH: u64 = keyword_hash(b"csch");
+
+pub const KW_ASINH: u64 = keyword_hash(b"asinh");
+pub const KW_ACOSH: u64 = keyword_hash(b"acosh");
+pub const KW_ATANH: u64 = keyword_hash(b"atanh");
+
+pub const KW_ACOTH: u64 = keyword_hash(b"acoth");
+pub const KW_ACSCH: u64 = keyword_hash(b"acsch");
+pub const KW_ASECH: u64 = keyword_hash(b"asech");
 
 pub struct Tokenizer<'src> {
     src: &'src [u8],

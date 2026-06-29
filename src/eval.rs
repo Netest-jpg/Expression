@@ -38,7 +38,6 @@ pub fn eval(arena: &[Node], idx: u32, vars: &VarStore) -> Result<f64, EvalError>
 
         // Equation nodes are not evaluated by plain eval; use evaluate_pending.
         NodeKind::Equation(_, _) => Err(EvalError::IsEquation),
-
         NodeKind::Neg(a) => Ok(-eval(arena, *a, vars)?),
         NodeKind::Add(a, b) => Ok(eval(arena, *a, vars)? + eval(arena, *b, vars)?),
         NodeKind::Sub(a, b) => Ok(eval(arena, *a, vars)? - eval(arena, *b, vars)?),
@@ -49,6 +48,33 @@ pub fn eval(arena: &[Node], idx: u32, vars: &VarStore) -> Result<f64, EvalError>
         NodeKind::Sin(a) => Ok(eval(arena, *a, vars)?.sin()),
         NodeKind::Cos(a) => Ok(eval(arena, *a, vars)?.cos()),
         NodeKind::Tan(a) => Ok(eval(arena, *a, vars)?.tan()),
+
+        NodeKind::Sec(a) => Ok(1.0 / eval(arena, *a, vars)?.cos()),
+        NodeKind::Csc(a) => Ok(1.0 / eval(arena, *a, vars)?.sin()),
+        NodeKind::Cot(a) => Ok(eval(arena, *a, vars)?.cos() / eval(arena, *a, vars)?.sin()),
+
+        NodeKind::Asin(a) => Ok(eval(arena, *a, vars)?.asin()),
+        NodeKind::Acos(a) => Ok(eval(arena, *a, vars)?.acos()),
+        NodeKind::Atan(a) => Ok(eval(arena, *a, vars)?.atan()),
+
+        NodeKind::Asec(a) => Ok((1.0 / eval(arena, *a, vars)?).acos()),
+        NodeKind::Acsc(a) => Ok((1.0 / eval(arena, *a, vars)?).asin()),
+        NodeKind::Acot(a) => Ok((1.0 / eval(arena, *a, vars)?).atan()),
+
+        NodeKind::Sinh(a) => Ok(eval(arena, *a, vars)?.sinh()),
+        NodeKind::Cosh(a) => Ok(eval(arena, *a, vars)?.cosh()),
+        NodeKind::Tanh(a) => Ok(eval(arena, *a, vars)?.tanh()),
+        NodeKind::Sech(a) => Ok(1.0 / eval(arena, *a, vars)?.cosh()),
+        NodeKind::Csch(a) => Ok(1.0 / eval(arena, *a, vars)?.sinh()),
+        NodeKind::Coth(a) => Ok(eval(arena, *a, vars)?.cosh() / eval(arena, *a, vars)?.sinh()),
+
+        NodeKind::Asinh(a) => Ok(eval(arena, *a, vars)?.asinh()),
+        NodeKind::Acosh(a) => Ok(eval(arena, *a, vars)?.acosh()),
+        NodeKind::Atanh(a) => Ok(eval(arena, *a, vars)?.atanh()),
+        NodeKind::Asech(a) => Ok((1.0 / eval(arena, *a, vars)?).acosh()),
+        NodeKind::Acsch(a) => Ok((1.0 / eval(arena, *a, vars)?).asinh()),
+        NodeKind::Acoth(a) => Ok((1.0 / eval(arena, *a, vars)?).atanh()),
+
         NodeKind::Ln(a) => Ok(eval(arena, *a, vars)?.ln()),
         NodeKind::Log(a) => Ok(eval(arena, *a, vars)?.log10()),
         NodeKind::Sqrt(a) => Ok(eval(arena, *a, vars)?.sqrt()),

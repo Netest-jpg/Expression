@@ -1,6 +1,10 @@
 #![allow(dead_code)]
 
-use crate::lexer::{KW_COS, KW_E, KW_LN, KW_LOG, KW_PI, KW_SIN, KW_SQRT, KW_TAN, Token};
+use crate::lexer::{
+    KW_ACOS, KW_ACOSH, KW_ACOT, KW_ACOTH, KW_ACSC, KW_ACSCH, KW_ASEC, KW_ASECH, KW_ASIN, KW_ASINH,
+    KW_ATAN, KW_ATANH, KW_COS, KW_COSH, KW_COT, KW_COTH, KW_CSC, KW_CSCH, KW_E, KW_LN, KW_LOG,
+    KW_PI, KW_SEC, KW_SECH, KW_SIN, KW_SINH, KW_SQRT, KW_TAN, KW_TANH, Token,
+};
 use fast_float2 as fast_float;
 
 #[repr(u8)]
@@ -67,12 +71,43 @@ pub enum NodeKind {
     /// General equation: lhs_expr = rhs_expr.
     /// Both sides are arbitrary expression trees (no restriction on lhs).
     Equation(u32, u32),
+
     Sin(u32),
     Cos(u32),
     Tan(u32),
+
+    Sec(u32),
+    Csc(u32),
+    Cot(u32),
+
+    Asin(u32),
+    Acos(u32),
+    Atan(u32),
+
+    Acsc(u32),
+    Asec(u32),
+    Acot(u32),
+
+    Sinh(u32),
+    Cosh(u32),
+    Tanh(u32),
+
+    Sech(u32),
+    Csch(u32),
+    Coth(u32),
+
+    Asinh(u32),
+    Acosh(u32),
+    Atanh(u32),
+
+    Asech(u32),
+    Acsch(u32),
+    Acoth(u32),
+
     Ln(u32),
     Log(u32),
     Sqrt(u32),
+
     Call {
         hash: u64,
         arg: u32,
@@ -189,6 +224,48 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                         self.push(NodeKind::Log(arg))
                     } else if hash == KW_SQRT {
                         self.push(NodeKind::Sqrt(arg))
+                    } else if hash == KW_SEC {
+                        self.push(NodeKind::Sec(arg))
+                    } else if hash == KW_CSC {
+                        self.push(NodeKind::Csc(arg))
+                    } else if hash == KW_COT {
+                        self.push(NodeKind::Cot(arg))
+                    } else if hash == KW_ASIN {
+                        self.push(NodeKind::Asin(arg))
+                    } else if hash == KW_ACOS {
+                        self.push(NodeKind::Acos(arg))
+                    } else if hash == KW_ATAN {
+                        self.push(NodeKind::Atan(arg))
+                    } else if hash == KW_ACSC {
+                        self.push(NodeKind::Acsc(arg))
+                    } else if hash == KW_ASEC {
+                        self.push(NodeKind::Asec(arg))
+                    } else if hash == KW_ACOT {
+                        self.push(NodeKind::Acot(arg))
+                    } else if hash == KW_SINH {
+                        self.push(NodeKind::Sinh(arg))
+                    } else if hash == KW_COSH {
+                        self.push(NodeKind::Cosh(arg))
+                    } else if hash == KW_TANH {
+                        self.push(NodeKind::Tanh(arg))
+                    } else if hash == KW_SECH {
+                        self.push(NodeKind::Sech(arg))
+                    } else if hash == KW_CSCH {
+                        self.push(NodeKind::Csch(arg))
+                    } else if hash == KW_COTH {
+                        self.push(NodeKind::Coth(arg))
+                    } else if hash == KW_ASINH {
+                        self.push(NodeKind::Asinh(arg))
+                    } else if hash == KW_ACOSH {
+                        self.push(NodeKind::Acosh(arg))
+                    } else if hash == KW_ATANH {
+                        self.push(NodeKind::Atanh(arg))
+                    } else if hash == KW_ASECH {
+                        self.push(NodeKind::Asech(arg))
+                    } else if hash == KW_ACSCH {
+                        self.push(NodeKind::Acsch(arg))
+                    } else if hash == KW_ACOTH {
+                        self.push(NodeKind::Acoth(arg))
                     } else {
                         self.push(NodeKind::Call { hash, arg })
                     });

@@ -85,17 +85,46 @@ fn write_node_compact<W: Write>(out: &mut W, kind: &NodeKind, src: &str) -> std:
         NodeKind::Variable(s, e, _) => write!(out, "{}", &src[*s as usize..*e as usize]),
         NodeKind::Neg(a) => write!(out, "-(n{a})"),
         NodeKind::Equation(a, b) => write!(out, "n{a} = n{b}"),
+
         NodeKind::Add(a, b) => write!(out, "n{a} + n{b}"),
         NodeKind::Sub(a, b) => write!(out, "n{a} - n{b}"),
         NodeKind::Mul(a, b) => write!(out, "n{a} * n{b}"),
         NodeKind::Div(a, b) => write!(out, "n{a} / n{b}"),
         NodeKind::Pow(a, b) => write!(out, "n{a} ^ n{b}"),
+
         NodeKind::Sin(a) => write!(out, "sin(n{a})"),
         NodeKind::Cos(a) => write!(out, "cos(n{a})"),
         NodeKind::Tan(a) => write!(out, "tan(n{a})"),
+
         NodeKind::Ln(a) => write!(out, "ln(n{a})"),
         NodeKind::Log(a) => write!(out, "log(n{a})"),
         NodeKind::Sqrt(a) => write!(out, "sqrt(n{a})"),
+
+        NodeKind::Sec(a) => write!(out, "sec(n{a})"),
+        NodeKind::Csc(a) => write!(out, "csc(n{a})"),
+        NodeKind::Cot(a) => write!(out, "cot(n{a})"),
+
+        NodeKind::Asin(a) => write!(out, "asin(n{a})"),
+        NodeKind::Acos(a) => write!(out, "acos(n{a})"),
+        NodeKind::Atan(a) => write!(out, "atan(n{a})"),
+        NodeKind::Acsc(a) => write!(out, "acsc(n{a})"),
+        NodeKind::Asec(a) => write!(out, "asec(n{a})"),
+        NodeKind::Acot(a) => write!(out, "acot(n{a})"),
+
+        NodeKind::Sinh(a) => write!(out, "sinh(n{a})"),
+        NodeKind::Cosh(a) => write!(out, "cosh(n{a})"),
+        NodeKind::Tanh(a) => write!(out, "tanh(n{a})"),
+        NodeKind::Sech(a) => write!(out, "sech(n{a})"),
+        NodeKind::Csch(a) => write!(out, "csch(n{a})"),
+        NodeKind::Coth(a) => write!(out, "coth(n{a})"),
+
+        NodeKind::Asinh(a) => write!(out, "asinh(n{a})"),
+        NodeKind::Acosh(a) => write!(out, "acosh(n{a})"),
+        NodeKind::Atanh(a) => write!(out, "atanh(n{a})"),
+        NodeKind::Asech(a) => write!(out, "asech(n{a})"),
+        NodeKind::Acsch(a) => write!(out, "acsch(n{a})"),
+        NodeKind::Acoth(a) => write!(out, "acoth(n{a})"),
+
         NodeKind::Call { hash, arg } => write!(out, "call<{hash}>(n{arg})"),
     }
 }
@@ -117,17 +146,46 @@ fn write_node_verbose<W: Write>(out: &mut W, kind: &NodeKind, src: &str) -> std:
         }
         NodeKind::Neg(c) => write!(out, "Neg(n{c})"),
         NodeKind::Equation(l, r) => write!(out, "Equation(n{l}, n{r})"),
+
         NodeKind::Add(l, r) => write!(out, "Add(n{l}, n{r})"),
         NodeKind::Sub(l, r) => write!(out, "Sub(n{l}, n{r})"),
         NodeKind::Mul(l, r) => write!(out, "Mul(n{l}, n{r})"),
         NodeKind::Div(l, r) => write!(out, "Div(n{l}, n{r})"),
         NodeKind::Pow(l, r) => write!(out, "Pow(n{l}, n{r})"),
+
         NodeKind::Sin(c) => write!(out, "Sin(n{c})"),
         NodeKind::Cos(c) => write!(out, "Cos(n{c})"),
         NodeKind::Tan(c) => write!(out, "Tan(n{c})"),
+
         NodeKind::Ln(c) => write!(out, "Ln(n{c})"),
         NodeKind::Log(c) => write!(out, "Log(n{c})"),
         NodeKind::Sqrt(c) => write!(out, "Sqrt(n{c})"),
+
+        NodeKind::Sec(c) => write!(out, "Sec(n{c})"),
+        NodeKind::Csc(c) => write!(out, "Csc(n{c})"),
+        NodeKind::Cot(c) => write!(out, "Cot(n{c})"),
+
+        NodeKind::Asin(c) => write!(out, "Asin(n{c})"),
+        NodeKind::Acos(c) => write!(out, "Acos(n{c})"),
+        NodeKind::Atan(c) => write!(out, "Atan(n{c})"),
+        NodeKind::Acsc(c) => write!(out, "Acsc(n{c})"),
+        NodeKind::Asec(c) => write!(out, "Asec(n{c})"),
+        NodeKind::Acot(c) => write!(out, "Acot(n{c})"),
+
+        NodeKind::Sinh(c) => write!(out, "Sinh(n{c})"),
+        NodeKind::Cosh(c) => write!(out, "Cosh(n{c})"),
+        NodeKind::Tanh(c) => write!(out, "Tanh(n{c})"),
+        NodeKind::Sech(c) => write!(out, "Sech(n{c})"),
+        NodeKind::Csch(c) => write!(out, "Csch(n{c})"),
+        NodeKind::Coth(c) => write!(out, "Coth(n{c})"),
+
+        NodeKind::Asinh(c) => write!(out, "Asinh(n{c})"),
+        NodeKind::Acosh(c) => write!(out, "Acosh(n{c})"),
+        NodeKind::Atanh(c) => write!(out, "Atanh(n{c})"),
+        NodeKind::Asech(c) => write!(out, "Asech(n{c})"),
+        NodeKind::Acsch(c) => write!(out, "Acsch(n{c})"),
+        NodeKind::Acoth(c) => write!(out, "Acoth(n{c})"),
+
         NodeKind::Call { hash, arg } => write!(out, "Call(hash: {hash}, arg: n{arg})"),
     }
 }
