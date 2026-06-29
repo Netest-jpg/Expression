@@ -209,6 +209,20 @@ fn write_arena<W: Write>(
     Ok(())
 }
 
+struct DebugFlags {
+    tokens: bool,
+    ast: bool,
+}
+
+impl DebugFlags {
+    fn new(verbose: bool) -> Self {
+        DebugFlags {
+            tokens: true, // on by default
+            ast: verbose, // off by default unless --debug
+        }
+    }
+}
+
 struct Pending {
     src: String,
     arena: Vec<Node>,
@@ -253,6 +267,8 @@ fn main() {
 
     let verbose = std::env::args().any(|a| a == "--debug");
 
+    let mut flags = DebugFlags::new(verbose);
+
     let stdout = std::io::stdout();
     let mut out = BufWriter::with_capacity(1 << 16, stdout.lock());
 
@@ -271,6 +287,7 @@ fn main() {
               [ use 'quit' / 'exit' / ':q' to exit ]\n\
               [ use 'evaluate' to solve the pending equation ]\n\
               [ use 'clear' to reset all variable bindings ]\n\
+              [ use 'show tokens' / 'show ast' to toggle debug output ]\n\
               \n",
         )
         .ok();
@@ -391,6 +408,40 @@ fn main() {
             continue;
         }
 
+        if expression == "show tokens" {
+            flags.tokens = !flags.tokens;
+            if should_print {
+                writeln!(
+                    out,
+                    "  (token output {})",
+                    if flags.tokens { "on" } else { "off" }
+                )
+                .ok();
+            }
+            if is_terminal {
+                writeln!(out).ok();
+                out.flush().ok();
+            }
+            continue;
+        }
+
+        if expression == "show ast" {
+            flags.ast = !flags.ast;
+            if should_print {
+                writeln!(
+                    out,
+                    "  (AST output {})",
+                    if flags.ast { "on" } else { "off" }
+                )
+                .ok();
+            }
+            if is_terminal {
+                writeln!(out).ok();
+                out.flush().ok();
+            }
+            continue;
+        }
+
         if let Err(e) = Tokenizer::new(expression).tokenize(&mut tokens) {
             eprintln!("Error: {e}");
             if is_terminal {
@@ -400,7 +451,7 @@ fn main() {
             continue;
         }
 
-        if should_print {
+        if should_print && flags.tokens {
             write_tokens(&mut out, &tokens, expression, verbose).ok();
             writeln!(out).ok();
             writeln!(out).ok();
@@ -425,7 +476,7 @@ fn main() {
             Ok(r) => r,
         };
 
-        if should_print {
+        if should_print && flags.ast {
             write_arena(&mut out, root, &arena, expression, verbose).ok();
             writeln!(out).ok();
         }
