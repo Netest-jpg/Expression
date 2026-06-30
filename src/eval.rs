@@ -46,7 +46,10 @@ pub fn eval(arena: &[Node], idx: u32, vars: &VarStore) -> Result<f64, EvalError>
 
         NodeKind::Sec(a) => Ok(1.0 / eval(arena, *a, vars)?.cos()),
         NodeKind::Csc(a) => Ok(1.0 / eval(arena, *a, vars)?.sin()),
-        NodeKind::Cot(a) => Ok(eval(arena, *a, vars)?.cos() / eval(arena, *a, vars)?.sin()),
+        NodeKind::Cot(a) => {
+            let v = eval(arena, *a, vars)?;
+            Ok(v.cos() / v.sin())
+        }
 
         NodeKind::Asin(a) => Ok(eval(arena, *a, vars)?.asin()),
         NodeKind::Acos(a) => Ok(eval(arena, *a, vars)?.acos()),
@@ -61,7 +64,10 @@ pub fn eval(arena: &[Node], idx: u32, vars: &VarStore) -> Result<f64, EvalError>
         NodeKind::Tanh(a) => Ok(eval(arena, *a, vars)?.tanh()),
         NodeKind::Sech(a) => Ok(1.0 / eval(arena, *a, vars)?.cosh()),
         NodeKind::Csch(a) => Ok(1.0 / eval(arena, *a, vars)?.sinh()),
-        NodeKind::Coth(a) => Ok(eval(arena, *a, vars)?.cosh() / eval(arena, *a, vars)?.sinh()),
+        NodeKind::Coth(a) => {
+            let v = eval(arena, *a, vars)?;
+            Ok(v.cosh() / v.sinh())
+        }
 
         NodeKind::Asinh(a) => Ok(eval(arena, *a, vars)?.asinh()),
         NodeKind::Acosh(a) => Ok(eval(arena, *a, vars)?.acosh()),
