@@ -407,8 +407,8 @@ fn main() {
     }
 
     let mut line = String::with_capacity(64);
-    let mut tokens: Vec<Token> = Vec::new();
-    let mut arena: Vec<Node> = Vec::new();
+    let mut tokens: Vec<Token> = Vec::with_capacity(32);
+    let mut arena: Vec<Node> = Vec::with_capacity(32);
     let mut vars = VarStore::new();
     let mut pending: Option<Pending> = None;
     // Hoisted buffer: reused for Pending.src each iteration instead of

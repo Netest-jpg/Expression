@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+//TODO: use a faster non-cryptographic hash function later
 use fast_float2 as fast_float;
 
 const FNV_OFFSET_BASIS: u64 = 14695981039346656037;
@@ -104,16 +105,13 @@ const fn build_dispatch_table() -> [Dispatch; 256] {
 }
 static DISPATCH: [Dispatch; 256] = build_dispatch_table();
 
-// -----------------------------------------------------------------------
-// Token
-//
 // Number and Identifier store byte offsets (u32) into the source string
 // rather than borrowed slices. This makes Token<'static> (no lifetime
 // parameter), so the tokens Vec can be declared outside the REPL loop and
 // reuse its heap allocation across iterations.
 //
 // Call `.raw(src)` / `.name(src)` to recover the string slice when needed.
-// -----------------------------------------------------------------------
+
 #[derive(Clone, PartialEq)]
 pub enum Token {
     /// Byte range in the source. Call `.raw(src)` when needed.
