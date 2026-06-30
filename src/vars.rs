@@ -216,7 +216,6 @@ fn collect_vars_inner(arena: &[Node], idx: u32, out: &mut VarList) {
         | NodeKind::Sqrt(a) => {
             collect_vars_inner(arena, *a, out);
         }
-        NodeKind::Call { arg, .. } => collect_vars_inner(arena, *arg, out),
         NodeKind::Add(a, b)
         | NodeKind::Sub(a, b)
         | NodeKind::Mul(a, b)

@@ -31,9 +31,49 @@ static LBP: [u8; TokenKind::_Count as usize] = {
     t[TokenKind::Minus as usize] = 10;
     t[TokenKind::Asterisk as usize] = 20;
     t[TokenKind::Slash as usize] = 20;
+    t[TokenKind::LParen as usize] = 20; // implicit multiply: x(0) -> x*(0)
     t[TokenKind::Caret as usize] = 30; // right-assoc: rbp = 29
     t
 };
+
+// Maps a known math-function keyword hash to its NodeKind constructor.
+// A single match over compile-time-constant u64s compiles to an efficient
+// jump table / binary search — one dispatch instead of two linear chains.
+// Only called when an identifier is immediately followed by '(', so this
+// never runs for plain variables, numbers, or operators.
+#[inline(always)]
+fn known_function_kind(hash: u64, arg: u32) -> Option<NodeKind> {
+    Some(match hash {
+        KW_SIN => NodeKind::Sin(arg),
+        KW_COS => NodeKind::Cos(arg),
+        KW_TAN => NodeKind::Tan(arg),
+        KW_LN => NodeKind::Ln(arg),
+        KW_LOG => NodeKind::Log(arg),
+        KW_SQRT => NodeKind::Sqrt(arg),
+        KW_SEC => NodeKind::Sec(arg),
+        KW_CSC => NodeKind::Csc(arg),
+        KW_COT => NodeKind::Cot(arg),
+        KW_ASIN => NodeKind::Asin(arg),
+        KW_ACOS => NodeKind::Acos(arg),
+        KW_ATAN => NodeKind::Atan(arg),
+        KW_ACSC => NodeKind::Acsc(arg),
+        KW_ASEC => NodeKind::Asec(arg),
+        KW_ACOT => NodeKind::Acot(arg),
+        KW_SINH => NodeKind::Sinh(arg),
+        KW_COSH => NodeKind::Cosh(arg),
+        KW_TANH => NodeKind::Tanh(arg),
+        KW_SECH => NodeKind::Sech(arg),
+        KW_CSCH => NodeKind::Csch(arg),
+        KW_COTH => NodeKind::Coth(arg),
+        KW_ASINH => NodeKind::Asinh(arg),
+        KW_ACOSH => NodeKind::Acosh(arg),
+        KW_ATANH => NodeKind::Atanh(arg),
+        KW_ASECH => NodeKind::Asech(arg),
+        KW_ACSCH => NodeKind::Acsch(arg),
+        KW_ACOTH => NodeKind::Acoth(arg),
+        _ => return None,
+    })
+}
 
 #[inline(always)]
 fn kind_of(tok: &Token) -> TokenKind {
@@ -107,11 +147,6 @@ pub enum NodeKind {
     Ln(u32),
     Log(u32),
     Sqrt(u32),
-
-    Call {
-        hash: u64,
-        arg: u32,
-    },
 }
 
 #[derive(Debug, Clone)]
@@ -208,67 +243,21 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                     return Ok(self.push(NodeKind::Constant(std::f64::consts::E)));
                 }
 
+                // Cheap check first: only bother resolving which function
+                // this is (if any) when a '(' actually follows. Plain
+                // variables, and identifiers not followed by '(', skip the
+                // hash dispatch entirely.
                 if matches!(self.peek_kind(), TokenKind::LParen) {
                     self.skip(); // eat '('
                     let arg = self.parse_expr(0)?;
                     self.expect_rparen()?;
-                    return Ok(if hash == KW_SIN {
-                        self.push(NodeKind::Sin(arg))
-                    } else if hash == KW_COS {
-                        self.push(NodeKind::Cos(arg))
-                    } else if hash == KW_TAN {
-                        self.push(NodeKind::Tan(arg))
-                    } else if hash == KW_LN {
-                        self.push(NodeKind::Ln(arg))
-                    } else if hash == KW_LOG {
-                        self.push(NodeKind::Log(arg))
-                    } else if hash == KW_SQRT {
-                        self.push(NodeKind::Sqrt(arg))
-                    } else if hash == KW_SEC {
-                        self.push(NodeKind::Sec(arg))
-                    } else if hash == KW_CSC {
-                        self.push(NodeKind::Csc(arg))
-                    } else if hash == KW_COT {
-                        self.push(NodeKind::Cot(arg))
-                    } else if hash == KW_ASIN {
-                        self.push(NodeKind::Asin(arg))
-                    } else if hash == KW_ACOS {
-                        self.push(NodeKind::Acos(arg))
-                    } else if hash == KW_ATAN {
-                        self.push(NodeKind::Atan(arg))
-                    } else if hash == KW_ACSC {
-                        self.push(NodeKind::Acsc(arg))
-                    } else if hash == KW_ASEC {
-                        self.push(NodeKind::Asec(arg))
-                    } else if hash == KW_ACOT {
-                        self.push(NodeKind::Acot(arg))
-                    } else if hash == KW_SINH {
-                        self.push(NodeKind::Sinh(arg))
-                    } else if hash == KW_COSH {
-                        self.push(NodeKind::Cosh(arg))
-                    } else if hash == KW_TANH {
-                        self.push(NodeKind::Tanh(arg))
-                    } else if hash == KW_SECH {
-                        self.push(NodeKind::Sech(arg))
-                    } else if hash == KW_CSCH {
-                        self.push(NodeKind::Csch(arg))
-                    } else if hash == KW_COTH {
-                        self.push(NodeKind::Coth(arg))
-                    } else if hash == KW_ASINH {
-                        self.push(NodeKind::Asinh(arg))
-                    } else if hash == KW_ACOSH {
-                        self.push(NodeKind::Acosh(arg))
-                    } else if hash == KW_ATANH {
-                        self.push(NodeKind::Atanh(arg))
-                    } else if hash == KW_ASECH {
-                        self.push(NodeKind::Asech(arg))
-                    } else if hash == KW_ACSCH {
-                        self.push(NodeKind::Acsch(arg))
-                    } else if hash == KW_ACOTH {
-                        self.push(NodeKind::Acoth(arg))
-                    } else {
-                        self.push(NodeKind::Call { hash, arg })
-                    });
+                    if let Some(kind) = known_function_kind(hash, arg) {
+                        return Ok(self.push(kind));
+                    }
+                    // Not a recognized function: identifier '(' ... ')' is
+                    // implicit multiplication, e.g. "x(0)" -> x * (0).
+                    let var = self.push(NodeKind::Variable(start, end, hash));
+                    return Ok(self.push(NodeKind::Mul(var, arg)));
                 }
 
                 Ok(self.push(NodeKind::Variable(start, end, hash)))
@@ -318,6 +307,14 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             Token::Caret => {
                 let right = self.parse_expr(29)?;
                 Ok(self.push(NodeKind::Pow(left, right)))
+            }
+            // Implicit multiply: "x(0)" -> x * (0). The '(' was just
+            // consumed by advance(); parse the inner expression as a normal
+            // parenthesized group, then multiply.
+            Token::LeftParenthesis => {
+                let right = self.parse_expr(0)?;
+                self.expect_rparen()?;
+                Ok(self.push(NodeKind::Mul(left, right)))
             }
             other => Err(format!("unexpected token: {:?}", other)),
         }

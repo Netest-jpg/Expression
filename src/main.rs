@@ -124,8 +124,6 @@ fn write_node_compact<W: Write>(out: &mut W, kind: &NodeKind, src: &str) -> std:
         NodeKind::Asech(a) => write!(out, "asech(n{a})"),
         NodeKind::Acsch(a) => write!(out, "acsch(n{a})"),
         NodeKind::Acoth(a) => write!(out, "acoth(n{a})"),
-
-        NodeKind::Call { hash, arg } => write!(out, "call<{hash}>(n{arg})"),
     }
 }
 
@@ -185,8 +183,6 @@ fn write_node_verbose<W: Write>(out: &mut W, kind: &NodeKind, src: &str) -> std:
         NodeKind::Asech(c) => write!(out, "Asech(n{c})"),
         NodeKind::Acsch(c) => write!(out, "Acsch(n{c})"),
         NodeKind::Acoth(c) => write!(out, "Acoth(n{c})"),
-
-        NodeKind::Call { hash, arg } => write!(out, "Call(hash: {hash}, arg: n{arg})"),
     }
 }
 

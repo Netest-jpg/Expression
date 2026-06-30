@@ -13,8 +13,6 @@ pub enum EvalError {
     UnboundVariable,
     /// The root node is an Equation — use evaluate_pending instead.
     IsEquation,
-    /// An unknown function hash was encountered; carries the evaluated arg.
-    UnknownFunction { hash: u64, arg_value: f64 },
 }
 
 impl EvalError {
@@ -22,9 +20,6 @@ impl EvalError {
         match self {
             EvalError::UnboundVariable => "unbound variable".to_string(),
             EvalError::IsEquation => "use 'evaluate' to evaluate an equation".to_string(),
-            EvalError::UnknownFunction { hash, arg_value } => {
-                format!("unknown function hash {hash} applied to {arg_value:?}")
-            }
         }
     }
 }
@@ -78,14 +73,6 @@ pub fn eval(arena: &[Node], idx: u32, vars: &VarStore) -> Result<f64, EvalError>
         NodeKind::Ln(a) => Ok(eval(arena, *a, vars)?.ln()),
         NodeKind::Log(a) => Ok(eval(arena, *a, vars)?.log10()),
         NodeKind::Sqrt(a) => Ok(eval(arena, *a, vars)?.sqrt()),
-
-        NodeKind::Call { hash, arg } => {
-            let arg_value = eval(arena, *arg, vars)?;
-            Err(EvalError::UnknownFunction {
-                hash: *hash,
-                arg_value,
-            })
-        }
     }
 }
 
