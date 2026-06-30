@@ -4,6 +4,7 @@ use std::io::{BufRead, BufWriter, Write};
 use expression::eval::{EvalError, EvalResultKind, eval, evaluate_pending, try_simple_assign};
 use expression::lexer::{Token, Tokenizer};
 use expression::parser::{Node, NodeKind, Parser};
+use expression::simplify::simplify;
 use expression::vars::{VarStore, collect_vars};
 use zmij::Buffer as DtoaBuffer;
 #[cfg(feature = "dhat-heap")]
@@ -186,6 +187,121 @@ fn write_node_verbose<W: Write>(out: &mut W, kind: &NodeKind, src: &str) -> std:
     }
 }
 
+/// Recursively renders the subtree rooted at `idx` into actual expression
+/// text. Unlike `write_node_compact`, which formats a single node and
+/// prints child indices as literal `n{idx}` text (fine for the `show ast`
+/// arena dump, where each line is meant to reference others by index),
+/// this walks the whole subtree so callers get a real, human-readable
+/// expression rather than leaked internal arena indices.
+fn write_node_recursive<W: Write>(
+    out: &mut W,
+    idx: u32,
+    arena: &[Node],
+    src: &str,
+) -> std::io::Result<()> {
+    match &arena[idx as usize].kind {
+        NodeKind::Number(v) => write_value(out, *v),
+        NodeKind::Constant(v) => {
+            if (v - std::f64::consts::PI).abs() < 1e-14 {
+                write!(out, "π")
+            } else if (v - std::f64::consts::E).abs() < 1e-14 {
+                write!(out, "e")
+            } else {
+                write_value(out, *v)
+            }
+        }
+        NodeKind::Variable(s, e, _) => write!(out, "{}", &src[*s as usize..*e as usize]),
+        NodeKind::Neg(a) => {
+            let a = *a;
+            write!(out, "-(")?;
+            write_node_recursive(out, a, arena, src)?;
+            write!(out, ")")
+        }
+        NodeKind::Equation(a, b) => {
+            let (a, b) = (*a, *b);
+            write_node_recursive(out, a, arena, src)?;
+            write!(out, " = ")?;
+            write_node_recursive(out, b, arena, src)
+        }
+        NodeKind::Add(a, b) => {
+            let (a, b) = (*a, *b);
+            write_node_recursive(out, a, arena, src)?;
+            write!(out, " + ")?;
+            write_node_recursive(out, b, arena, src)
+        }
+        NodeKind::Sub(a, b) => {
+            let (a, b) = (*a, *b);
+            write_node_recursive(out, a, arena, src)?;
+            write!(out, " - ")?;
+            write_node_recursive(out, b, arena, src)
+        }
+        NodeKind::Mul(a, b) => {
+            let (a, b) = (*a, *b);
+            write_node_recursive(out, a, arena, src)?;
+            write!(out, " * ")?;
+            write_node_recursive(out, b, arena, src)
+        }
+        NodeKind::Div(a, b) => {
+            let (a, b) = (*a, *b);
+            write_node_recursive(out, a, arena, src)?;
+            write!(out, " / ")?;
+            write_node_recursive(out, b, arena, src)
+        }
+        NodeKind::Pow(a, b) => {
+            let (a, b) = (*a, *b);
+            write_node_recursive(out, a, arena, src)?;
+            write!(out, " ^ ")?;
+            write_node_recursive(out, b, arena, src)
+        }
+
+        NodeKind::Sin(a) => write_unary_recursive(out, "sin", *a, arena, src),
+        NodeKind::Cos(a) => write_unary_recursive(out, "cos", *a, arena, src),
+        NodeKind::Tan(a) => write_unary_recursive(out, "tan", *a, arena, src),
+
+        NodeKind::Ln(a) => write_unary_recursive(out, "ln", *a, arena, src),
+        NodeKind::Log(a) => write_unary_recursive(out, "log", *a, arena, src),
+        NodeKind::Sqrt(a) => write_unary_recursive(out, "sqrt", *a, arena, src),
+
+        NodeKind::Sec(a) => write_unary_recursive(out, "sec", *a, arena, src),
+        NodeKind::Csc(a) => write_unary_recursive(out, "csc", *a, arena, src),
+        NodeKind::Cot(a) => write_unary_recursive(out, "cot", *a, arena, src),
+
+        NodeKind::Asin(a) => write_unary_recursive(out, "asin", *a, arena, src),
+        NodeKind::Acos(a) => write_unary_recursive(out, "acos", *a, arena, src),
+        NodeKind::Atan(a) => write_unary_recursive(out, "atan", *a, arena, src),
+        NodeKind::Acsc(a) => write_unary_recursive(out, "acsc", *a, arena, src),
+        NodeKind::Asec(a) => write_unary_recursive(out, "asec", *a, arena, src),
+        NodeKind::Acot(a) => write_unary_recursive(out, "acot", *a, arena, src),
+
+        NodeKind::Sinh(a) => write_unary_recursive(out, "sinh", *a, arena, src),
+        NodeKind::Cosh(a) => write_unary_recursive(out, "cosh", *a, arena, src),
+        NodeKind::Tanh(a) => write_unary_recursive(out, "tanh", *a, arena, src),
+        NodeKind::Sech(a) => write_unary_recursive(out, "sech", *a, arena, src),
+        NodeKind::Csch(a) => write_unary_recursive(out, "csch", *a, arena, src),
+        NodeKind::Coth(a) => write_unary_recursive(out, "coth", *a, arena, src),
+
+        NodeKind::Asinh(a) => write_unary_recursive(out, "asinh", *a, arena, src),
+        NodeKind::Acosh(a) => write_unary_recursive(out, "acosh", *a, arena, src),
+        NodeKind::Atanh(a) => write_unary_recursive(out, "atanh", *a, arena, src),
+        NodeKind::Asech(a) => write_unary_recursive(out, "asech", *a, arena, src),
+        NodeKind::Acsch(a) => write_unary_recursive(out, "acsch", *a, arena, src),
+        NodeKind::Acoth(a) => write_unary_recursive(out, "acoth", *a, arena, src),
+    }
+}
+
+#[inline(always)]
+fn write_unary_recursive<W: Write>(
+    out: &mut W,
+    name: &str,
+    a: u32,
+    arena: &[Node],
+    src: &str,
+) -> std::io::Result<()> {
+    write!(out, "{name}(")?;
+    write_node_recursive(out, a, arena, src)?;
+    write!(out, ")")
+}
+
 fn write_arena<W: Write>(
     out: &mut W,
     root: u32,
@@ -282,6 +398,7 @@ fn main() {
             b"Enter a math expression:\n\
               [ use 'quit' / 'exit' / ':q' to exit ]\n\
               [ use 'evaluate' to solve the pending equation ]\n\
+              [ use 'simplify' to simplify the pending equation ]\n\
               [ use 'clear' to reset all variable bindings ]\n\
               [ use 'show tokens' / 'show ast' to toggle debug output ]\n\
               \n",
@@ -396,6 +513,40 @@ fn main() {
                         }
                     }
                 },
+            }
+            if is_terminal {
+                writeln!(out).ok();
+                out.flush().ok();
+            }
+            continue;
+        }
+
+        if expression == "simplify" {
+            match &pending {
+                None => {
+                    eprintln!("Error: nothing to simplify — enter an expression first.");
+                }
+                Some(p) => {
+                    // simplify() appends new nodes onto a clone of the pending
+                    // arena rather than the original — keeps Pending's stored
+                    // arena untouched in case the user wants to keep building
+                    // on the unsimplified version (e.g. assigning a variable
+                    // then evaluating normally afterwards).
+                    let mut work_arena = p.arena.clone();
+                    let simplified_root = simplify(&mut work_arena, p.root);
+
+                    if should_print {
+                        write!(out, "  = ").ok();
+                        write_node_recursive(&mut out, simplified_root, &work_arena, &p.src).ok();
+                        writeln!(out).ok();
+
+                        if flags.ast {
+                            write_arena(&mut out, simplified_root, &work_arena, &p.src, verbose)
+                                .ok();
+                            writeln!(out).ok();
+                        }
+                    }
+                }
             }
             if is_terminal {
                 writeln!(out).ok();
