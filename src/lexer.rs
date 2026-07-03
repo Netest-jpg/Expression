@@ -5,6 +5,14 @@ use fast_float2 as fast_float;
 const FNV_OFFSET_BASIS: u64 = 14695981039346656037;
 const FNV_PRIME: u64 = 1099511628211;
 
+/// Computes hash for the whole byte slice using the FNV-1a algorithm at compile time.\
+/// **FNV-1a algorithm:**\
+/// `hash = (hash ^ byte).wrapping_mul(FNV_PRIME)`\
+/// FNV_OFFSET_BASIS is used as the initial hash value.
+/// # Arguments
+/// * `bytes` - The bytes to hash.
+/// # Returns
+/// The hash of the bytes.
 const fn keyword_hash(bytes: &[u8]) -> u64 {
     let mut hash = FNV_OFFSET_BASIS;
     let mut i = 0;
@@ -15,11 +23,26 @@ const fn keyword_hash(bytes: &[u8]) -> u64 {
     hash
 }
 
+/// Computes hash for a given byte using the FNV-1a algorithm.\
+/// **FNV-1a algorithm:**\
+/// `hash = (hash ^ byte).wrapping_mul(FNV_PRIME)`\
+/// # Arguments
+/// * `hash` - The set hash value.
+/// * `byte` - The byte to hash.
+/// # Returns
+/// The hash of a byte.
 #[inline(always)]
 fn fnv1a_update(hash: u64, byte: u8) -> u64 {
     (hash ^ byte as u64).wrapping_mul(FNV_PRIME)
 }
 
+/// Builds a bitset of size 32 bytes **at compile-time**, where each byte represents 8 characters.\
+/// Each bit in the byte is set to 1 if the corresponding character is an identifier character.\
+/// # Allowed characters:
+/// - `0` .. `9`
+/// - `A` .. `Z`
+/// - `a` .. `z`
+/// - `_`
 const fn build_ident_table() -> [u8; 32] {
     let mut t = [0; 32];
 
@@ -46,14 +69,18 @@ const fn build_ident_table() -> [u8; 32] {
     t
 }
 
+// static: creates a global variable
+// is stored in static memory for the entire duration of the program
 static IS_IDENT: [u8; 32] = build_ident_table();
 
+/// Takes in an 8-bit unsigned character and returns a boolean indicating whether it is a valid identifier character.
 #[inline(always)]
 fn is_ident_char(c: u8) -> bool {
     unsafe { (*IS_IDENT.get_unchecked(c as usize / 8) >> (c % 8)) & 1 != 0 }
 }
 
-#[repr(u8)]
+/// Value types for the `DISPATCH` lookup table.
+#[repr(u8)] // stores the enum's discriminant as an 8-bit unsigned integer
 #[derive(Clone, Copy)]
 enum Dispatch {
     Whitespace,
@@ -70,6 +97,15 @@ enum Dispatch {
     Unknown,
 }
 
+/// Builds the `DISPATCH` lookup table at compile time.\
+/// Maps every possible byte (0-255) to a `Dispatch` variant.\
+/// - Whitespace: ` `, `\t`, `\n`, `\r`
+/// - Digits: `0`-`9`, `.`
+/// - Alpha: `a`-`z`, `A`-`Z`
+/// - Operators: `+`, `-`, `*`, `/`, `^`
+/// - Parentheses: `(`, `)`
+/// - Equals: `=`
+/// - Unknown: all other bytes
 const fn build_dispatch_table() -> [Dispatch; 256] {
     let mut t = [Dispatch::Unknown; 256];
     t[b' ' as usize] = Dispatch::Whitespace;
@@ -103,15 +139,16 @@ const fn build_dispatch_table() -> [Dispatch; 256] {
     t[b'=' as usize] = Dispatch::Equals;
     t
 }
-static DISPATCH: [Dispatch; 256] = build_dispatch_table();
+static DISPATCH: [Dispatch; 256] = build_dispatch_table(); // stored in .rodata as static memory
 
-// Number and Identifier store byte offsets (u32) into the source string
-// rather than borrowed slices. This makes Token<'static> (no lifetime
-// parameter), so the tokens Vec can be declared outside the REPL loop and
-// reuse its heap allocation across iterations.
-//
-// Call `.raw(src)` / `.name(src)` to recover the string slice when needed.
+// Byte offsets (not &str) keep Token lifetime-free, so Vec<Token> can be
+// reused across REPL iterations instead of reallocating a fresh Vec<Token<'src>> per input.
+// Use .raw(src)/.name(src) to get the text back.
 
+// Offsets are u32, not usize, to keep Token small (halves offset size on
+// 64-bit) and cache-friendly across the reused token Vec. u32 caps source
+// size at ~4GB, which is a non-issue here. Casts to usize happen only
+// inside .raw()/.name() at slice time.
 #[derive(Clone, PartialEq)]
 pub enum Token {
     /// Byte range in the source. Call `.raw(src)` when needed.
@@ -119,6 +156,7 @@ pub enum Token {
         start: u32,
         end: u32,
     },
+    /// Byte range in the source. Call `.name(src)` when needed.
     Identifier {
         start: u32,
         end: u32,
@@ -136,6 +174,7 @@ pub enum Token {
 }
 
 impl Token {
+    /// Returns the raw source text for that numeric literal.
     #[inline(always)]
     pub fn raw<'src>(&self, src: &'src str) -> &'src str {
         match self {
@@ -169,6 +208,7 @@ impl Token {
     }
 }
 
+/// Formats a token as a human-readable string for debugging.
 impl std::fmt::Debug for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -187,6 +227,7 @@ impl std::fmt::Debug for Token {
     }
 }
 
+// common keyword hashes stored as constants instead of static because the hashs are in u64.
 pub const KW_LN: u64 = keyword_hash(b"ln");
 pub const KW_LOG: u64 = keyword_hash(b"log");
 
@@ -232,23 +273,26 @@ pub struct Tokenizer<'src> {
 }
 
 impl<'src> Tokenizer<'src> {
+    /// Creates a new [`Tokenizer`] with the given input string.
     pub fn new(input: &'src str) -> Self {
         Tokenizer {
             src: input.as_bytes(),
             pos: 0,
         }
     }
-
+    /// Returns the current byte, if any.
     #[inline(always)]
     fn current(&self) -> Option<u8> {
         self.src.get(self.pos).copied()
     }
 
+    /// Advances the tokenizer to the next byte.
     #[inline(always)]
     fn advance(&mut self) {
         self.pos += 1;
     }
 
+    /// Tokenizes the input string into a vector of [`Token`]s.
     pub fn tokenize(&mut self, tokens: &mut Vec<Token>) -> Result<(), String> {
         tokens.clear();
         // Typical token is 2-3 chars; src.len()/2+2 avoids the large
@@ -325,7 +369,7 @@ impl<'src> Tokenizer<'src> {
         }
         Ok(())
     }
-
+    /// Reads a number from the input string and returns it as a [`Token::Number`].
     #[inline(always)]
     fn read_number(&mut self) -> Result<Token, String> {
         let start = self.pos as u32;
@@ -360,6 +404,7 @@ impl<'src> Tokenizer<'src> {
         })
     }
 
+    /// Reads an identifier from the input string and returns it as a [`Token::Identifier`].
     #[inline(always)]
     fn read_identifier(&mut self) -> Token {
         let start = self.pos as u32;
