@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+// All the keyword hash imports  from lexer.rs
 use crate::lexer::{
     KW_ACOS, KW_ACOSH, KW_ACOT, KW_ACOTH, KW_ACSC, KW_ACSCH, KW_ASEC, KW_ASECH, KW_ASIN, KW_ASINH,
     KW_ATAN, KW_ATANH, KW_COS, KW_COSH, KW_COT, KW_COTH, KW_CSC, KW_CSCH, KW_E, KW_LN, KW_LOG,
@@ -7,6 +8,8 @@ use crate::lexer::{
 };
 use fast_float2 as fast_float;
 
+/// Represents the kind of a token.
+/// the discriminant is stored in the lower 8 bits of a `u8`.
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum TokenKind {
@@ -23,6 +26,10 @@ enum TokenKind {
     Equals = 10,
     _Count = 11,
 }
+
+/// The left-binding power (LBP) of each token kind.
+/// The lower 8 bits of each `u8` store the LBP value.
+/// It is stored in .rodata section of the binary.
 
 static LBP: [u8; TokenKind::_Count as usize] = {
     let mut t = [0u8; TokenKind::_Count as usize];
@@ -75,6 +82,7 @@ fn known_function_kind(hash: u64, arg: u32) -> Option<NodeKind> {
     })
 }
 
+/// Converts a [`Token`] to a [`TokenKind`].
 #[inline(always)]
 fn kind_of(tok: &Token) -> TokenKind {
     match tok {
@@ -92,9 +100,6 @@ fn kind_of(tok: &Token) -> TokenKind {
     }
 }
 
-// -----------------------------------------------------------------------
-// AST node — flat arena, children are u32 indices.
-// -----------------------------------------------------------------------
 #[derive(Debug, Clone)]
 pub enum NodeKind {
     Number(f64),
@@ -154,9 +159,6 @@ pub struct Node {
     pub kind: NodeKind,
 }
 
-// -----------------------------------------------------------------------
-// Parser
-// -----------------------------------------------------------------------
 pub struct Parser<'src, 'arena> {
     tokens: &'src [Token],
     src: &'src str,
@@ -186,6 +188,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         unsafe { self.tokens.get_unchecked(self.pos) }
     }
 
+    /// Peek at the kind of the current token.
     #[inline(always)]
     fn peek_kind(&self) -> TokenKind {
         kind_of(unsafe { self.tokens.get_unchecked(self.pos) })
@@ -203,6 +206,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         self.pos += 1;
     }
 
+    /// Expect the current token to be an rparen, and skip it if it is.
     #[inline(always)]
     fn expect_rparen(&mut self) -> Result<(), String> {
         if self.peek_kind() != TokenKind::RParen {
@@ -224,6 +228,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         Ok(left)
     }
 
+    /// Parse a number or identifier token as the NUD (null denotation) of an expression.
     #[inline(always)]
     fn nud(&mut self) -> Result<u32, String> {
         let tok = self.advance();
@@ -278,6 +283,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         }
     }
 
+    /// Parse a binary operator as the LED (left denotation) of an expression.
     #[inline(always)]
     fn led(&mut self, left: u32) -> Result<u32, String> {
         let tok = self.advance();
@@ -320,6 +326,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         }
     }
 
+    /// Parse the entire expression, returning the root node.
     pub fn parse(mut self) -> Result<u32, String> {
         let root = self.parse_expr(0)?;
         if self.peek_kind() != TokenKind::Eof {
