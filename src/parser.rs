@@ -162,6 +162,27 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         }
     }
 
+    pub fn parse_expr(&mut self, rbp: u8) -> Result<u32, String> {
+        let mut left = self.nud()?;
+        loop {
+            let lbp = unsafe { *LBP.get_unchecked(self.peek_kind() as usize) };
+            if lbp <= rbp {
+                break;
+            }
+            left = self.led(left)?;
+        }
+        Ok(left)
+    }
+
+    /// Parse the entire expression, returning the root node.
+    pub fn parse(mut self) -> Result<u32, String> {
+        let root = self.parse_expr(0)?;
+        if self.peek_kind() != TokenKind::Eof {
+            return Err(format!("unexpected trailing token: {:?}", self.peek()));
+        }
+        Ok(root)
+    }
+
     #[inline(always)]
     fn push(&mut self, node: Node) -> u32 {
         let idx = self.arena.len() as u32;
@@ -200,18 +221,6 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         }
         self.skip();
         Ok(())
-    }
-
-    pub fn parse_expr(&mut self, rbp: u8) -> Result<u32, String> {
-        let mut left = self.nud()?;
-        loop {
-            let lbp = unsafe { *LBP.get_unchecked(self.peek_kind() as usize) };
-            if lbp <= rbp {
-                break;
-            }
-            left = self.led(left)?;
-        }
-        Ok(left)
     }
 
     /// Parse a number or identifier token as the NUD (null denotation) of an expression.
@@ -310,15 +319,6 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             }
             other => Err(format!("unexpected token: {:?}", other)),
         }
-    }
-
-    /// Parse the entire expression, returning the root node.
-    pub fn parse(mut self) -> Result<u32, String> {
-        let root = self.parse_expr(0)?;
-        if self.peek_kind() != TokenKind::Eof {
-            return Err(format!("unexpected trailing token: {:?}", self.peek()));
-        }
-        Ok(root)
     }
 }
 

@@ -21,23 +21,6 @@ use crate::parser::Node;
 // function safe to call independently of eval/parser and avoids any
 // need to track liveness or free old nodes.
 
-#[inline(always)]
-fn push(arena: &mut Vec<Node>, node: Node) -> u32 {
-    let idx = arena.len() as u32;
-    arena.push(node);
-    idx
-}
-
-/// Returns **Some(f64)** if the node at `idx` is **NodeKind::Number**, else **None**\
-/// Only applies to literal Number nodes — not Constants
-#[inline(always)]
-fn as_number(arena: &[Node], idx: u32) -> Option<f64> {
-    match arena[idx as usize] {
-        Node::Number(v) => Some(v),
-        _ => None,
-    }
-}
-
 pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
     // Clone the kind up front: arena is about to be mutated by recursive
     // calls (which push new nodes), so we can't hold a borrow into it
@@ -189,6 +172,23 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
         Node::Ln(a) => simplify_unary(arena, a, Node::Ln, f64::ln),
         Node::Log(a) => simplify_unary(arena, a, Node::Log, f64::log10),
         Node::Sqrt(a) => simplify_unary(arena, a, Node::Sqrt, f64::sqrt),
+    }
+}
+
+#[inline(always)]
+fn push(arena: &mut Vec<Node>, node: Node) -> u32 {
+    let idx = arena.len() as u32;
+    arena.push(node);
+    idx
+}
+
+/// Returns **Some(f64)** if the node at `idx` is **NodeKind::Number**, else **None**\
+/// Only applies to literal Number nodes — not Constants
+#[inline(always)]
+fn as_number(arena: &[Node], idx: u32) -> Option<f64> {
+    match arena[idx as usize] {
+        Node::Number(v) => Some(v),
+        _ => None,
     }
 }
 

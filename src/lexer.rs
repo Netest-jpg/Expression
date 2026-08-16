@@ -1,11 +1,10 @@
 #![allow(dead_code)]
-//TODO: use a faster non-cryptographic hash function later
 use fast_float2 as fast_float;
 
 const FNV_OFFSET_BASIS: u64 = 14695981039346656037;
 const FNV_PRIME: u64 = 1099511628211;
 
-/// Computes hash for the whole byte slice using the FNV-1a algorithm at compile time.\
+/// Computes hash for a byte slice using the FNV-1a algorithm at compile time.\
 /// **FNV-1a algorithm:**\
 /// `hash = (hash ^ byte).wrapping_mul(FNV_PRIME)`\
 /// **FNV_OFFSET_BASIS** is used as the initial hash value.
@@ -21,15 +20,48 @@ const fn keyword_hash(bytes: &[u8]) -> u64 {
     hash
 }
 
-/// Computes hash for a given byte using the FNV-1a algorithm.\
-/// **FNV-1a algorithm:**\
-/// `hash = (hash ^ byte).wrapping_mul(FNV_PRIME)`\
-/// # Returns
-/// The hash of a byte.
-#[inline(always)]
-fn fnv1a_update(hash: u64, byte: u8) -> u64 {
-    (hash ^ byte as u64).wrapping_mul(FNV_PRIME)
-}
+// common keyword hashes stored as constants instead of static because the hashs are in u64.
+pub const KW_LN: u64 = keyword_hash(b"ln");
+pub const KW_LOG: u64 = keyword_hash(b"log");
+
+pub const KW_SIN: u64 = keyword_hash(b"sin");
+pub const KW_COS: u64 = keyword_hash(b"cos");
+pub const KW_TAN: u64 = keyword_hash(b"tan");
+
+pub const KW_SEC: u64 = keyword_hash(b"sec");
+pub const KW_CSC: u64 = keyword_hash(b"csc");
+pub const KW_COT: u64 = keyword_hash(b"cot");
+
+pub const KW_SQRT: u64 = keyword_hash(b"sqrt");
+pub const KW_PI: u64 = keyword_hash(b"pi");
+pub const KW_E: u64 = keyword_hash(b"e");
+
+pub const KW_ASIN: u64 = keyword_hash(b"asin");
+pub const KW_ACOS: u64 = keyword_hash(b"acos");
+pub const KW_ATAN: u64 = keyword_hash(b"atan");
+
+pub const KW_ACSC: u64 = keyword_hash(b"acsc");
+pub const KW_ASEC: u64 = keyword_hash(b"asec");
+pub const KW_ACOT: u64 = keyword_hash(b"acot");
+
+pub const KW_SINH: u64 = keyword_hash(b"sinh");
+pub const KW_COSH: u64 = keyword_hash(b"cosh");
+pub const KW_TANH: u64 = keyword_hash(b"tanh");
+
+pub const KW_SECH: u64 = keyword_hash(b"sech");
+pub const KW_COTH: u64 = keyword_hash(b"coth");
+pub const KW_CSCH: u64 = keyword_hash(b"csch");
+
+pub const KW_ASINH: u64 = keyword_hash(b"asinh");
+pub const KW_ACOSH: u64 = keyword_hash(b"acosh");
+pub const KW_ATANH: u64 = keyword_hash(b"atanh");
+
+pub const KW_ACOTH: u64 = keyword_hash(b"acoth");
+pub const KW_ACSCH: u64 = keyword_hash(b"acsch");
+pub const KW_ASECH: u64 = keyword_hash(b"asech");
+
+static IS_IDENT: [u8; 32] = build_ident_table();
+static DISPATCH: [Dispatch; 256] = build_dispatch_table();
 
 /// Builds a bitset of 32 bytes **at compile-time**, where each byte represents 8 characters.\
 /// Each bit in the byte is set to **1** if the corresponding character is an identifier character.\
@@ -63,8 +95,6 @@ const fn build_ident_table() -> [u8; 32] {
 
     t
 }
-
-static IS_IDENT: [u8; 32] = build_ident_table();
 
 /// Takes in a u8 and returns a boolean indicating whether it is a valid identifier character.
 #[inline(always)]
@@ -132,7 +162,6 @@ const fn build_dispatch_table() -> [Dispatch; 256] {
     t[b'=' as usize] = Dispatch::Equals;
     t
 }
-static DISPATCH: [Dispatch; 256] = build_dispatch_table();
 
 // Byte offsets (not &str) keep Token lifetime-free, so Vec<Token> can be
 // reused across REPL iterations instead of reallocating a fresh Vec<Token<'src>> per input.
@@ -220,46 +249,6 @@ impl std::fmt::Debug for Token {
     }
 }
 
-// common keyword hashes stored as constants instead of static because the hashs are in u64.
-pub const KW_LN: u64 = keyword_hash(b"ln");
-pub const KW_LOG: u64 = keyword_hash(b"log");
-
-pub const KW_SIN: u64 = keyword_hash(b"sin");
-pub const KW_COS: u64 = keyword_hash(b"cos");
-pub const KW_TAN: u64 = keyword_hash(b"tan");
-
-pub const KW_SEC: u64 = keyword_hash(b"sec");
-pub const KW_CSC: u64 = keyword_hash(b"csc");
-pub const KW_COT: u64 = keyword_hash(b"cot");
-
-pub const KW_SQRT: u64 = keyword_hash(b"sqrt");
-pub const KW_PI: u64 = keyword_hash(b"pi");
-pub const KW_E: u64 = keyword_hash(b"e");
-
-pub const KW_ASIN: u64 = keyword_hash(b"asin");
-pub const KW_ACOS: u64 = keyword_hash(b"acos");
-pub const KW_ATAN: u64 = keyword_hash(b"atan");
-
-pub const KW_ACSC: u64 = keyword_hash(b"acsc");
-pub const KW_ASEC: u64 = keyword_hash(b"asec");
-pub const KW_ACOT: u64 = keyword_hash(b"acot");
-
-pub const KW_SINH: u64 = keyword_hash(b"sinh");
-pub const KW_COSH: u64 = keyword_hash(b"cosh");
-pub const KW_TANH: u64 = keyword_hash(b"tanh");
-
-pub const KW_SECH: u64 = keyword_hash(b"sech");
-pub const KW_COTH: u64 = keyword_hash(b"coth");
-pub const KW_CSCH: u64 = keyword_hash(b"csch");
-
-pub const KW_ASINH: u64 = keyword_hash(b"asinh");
-pub const KW_ACOSH: u64 = keyword_hash(b"acosh");
-pub const KW_ATANH: u64 = keyword_hash(b"atanh");
-
-pub const KW_ACOTH: u64 = keyword_hash(b"acoth");
-pub const KW_ACSCH: u64 = keyword_hash(b"acsch");
-pub const KW_ASECH: u64 = keyword_hash(b"asech");
-
 pub struct Tokenizer<'src> {
     src: &'src [u8],
     pos: usize,
@@ -272,17 +261,6 @@ impl<'src> Tokenizer<'src> {
             src: input.as_bytes(),
             pos: 0,
         }
-    }
-    /// Returns the current byte, if any.
-    #[inline(always)]
-    fn current(&self) -> Option<u8> {
-        self.src.get(self.pos).copied()
-    }
-
-    /// Advances the tokenizer to the next byte.
-    #[inline(always)]
-    fn advance(&mut self) {
-        self.pos += 1;
     }
 
     /// Tokenizes the input string into a vector of [`Token`]s.
@@ -362,6 +340,19 @@ impl<'src> Tokenizer<'src> {
         }
         Ok(())
     }
+
+    /// Returns the current byte, if any.
+    #[inline(always)]
+    fn current(&self) -> Option<u8> {
+        self.src.get(self.pos).copied()
+    }
+
+    /// Advances the tokenizer to the next byte.
+    #[inline(always)]
+    fn advance(&mut self) {
+        self.pos += 1;
+    }
+
     /// Reads a number from the input string and returns it as a [`Token::Number`].
     #[inline(always)]
     fn read_number(&mut self) -> Result<Token, String> {
@@ -418,6 +409,16 @@ impl<'src> Tokenizer<'src> {
             hash,
         }
     }
+}
+
+/// Computes hash for one byte using the FNV-1a algorithm.\
+/// **FNV-1a algorithm:**\
+/// `hash = (hash ^ byte).wrapping_mul(FNV_PRIME)`\
+/// # Returns
+/// The hash of a byte.
+#[inline(always)]
+fn fnv1a_update(hash: u64, byte: u8) -> u64 {
+    (hash ^ byte as u64).wrapping_mul(FNV_PRIME)
 }
 
 #[cfg(test)]
