@@ -22,9 +22,9 @@ use crate::parser::Node;
 // need to track liveness or free old nodes.
 
 #[inline(always)]
-fn push(arena: &mut Vec<Node>, kind: Node) -> u32 {
+fn push(arena: &mut Vec<Node>, node: Node) -> u32 {
     let idx = arena.len() as u32;
-    arena.push(kind);
+    arena.push(node);
     idx
 }
 

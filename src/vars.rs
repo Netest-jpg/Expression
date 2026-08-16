@@ -1,11 +1,5 @@
 use crate::parser::Node;
 
-// -----------------------------------------------------------------------
-// Variable store — linear scan over (hash, value) pairs.
-//
-// Up to 64 bindings; the FNV-1a hash (precomputed by the lexer) means
-// lookup never touches the source string.
-// -----------------------------------------------------------------------
 pub const VAR_STORE_LIMIT: usize = 64;
 
 pub struct VarStore {

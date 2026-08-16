@@ -73,8 +73,8 @@ fn write_value<W: Write>(out: &mut W, v: f64) -> std::io::Result<()> {
     }
 }
 
-fn write_node_compact<W: Write>(out: &mut W, kind: &Node, src: &str) -> std::io::Result<()> {
-    match kind {
+fn write_node_compact<W: Write>(out: &mut W, node: &Node, src: &str) -> std::io::Result<()> {
+    match node {
         Node::Number(v) => write_value(out, *v),
         Node::Constant(v) => {
             if (v - std::f64::consts::PI).abs() < 1e-14 {
@@ -130,8 +130,8 @@ fn write_node_compact<W: Write>(out: &mut W, kind: &Node, src: &str) -> std::io:
     }
 }
 
-fn write_node_verbose<W: Write>(out: &mut W, kind: &Node, src: &str) -> std::io::Result<()> {
-    match kind {
+fn write_node_verbose<W: Write>(out: &mut W, node: &Node, src: &str) -> std::io::Result<()> {
+    match node {
         Node::Number(v) => {
             write!(out, "Number(")?;
             write_value(out, *v)?;

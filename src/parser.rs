@@ -57,19 +57,16 @@ fn kind_of(tok: &Token) -> TokenKind {
 #[derive(Debug, Clone)]
 pub enum Node {
     Number(f64),
-    /// π or e — resolved at parse time.
     Constant(f64),
-    /// Variable: byte offsets + precomputed FNV-1a hash (no src needed at lookup).
     Variable(u32, u32, u64),
+
     Neg(u32),
+
     Add(u32, u32),
     Sub(u32, u32),
     Mul(u32, u32),
     Div(u32, u32),
     Pow(u32, u32),
-    /// General equation: lhs_expr = rhs_expr.
-    /// Both sides are arbitrary expression trees (no restriction on lhs).
-    Equation(u32, u32),
 
     Sin(u32),
     Cos(u32),
@@ -106,6 +103,8 @@ pub enum Node {
     Ln(u32),
     Log(u32),
     Sqrt(u32),
+
+    Equation(u32, u32),
 }
 
 // A single match over compile-time-constant u64s compiles to an efficient
@@ -164,9 +163,9 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     }
 
     #[inline(always)]
-    fn push(&mut self, kind: Node) -> u32 {
+    fn push(&mut self, node: Node) -> u32 {
         let idx = self.arena.len() as u32;
-        self.arena.push(kind);
+        self.arena.push(node);
         idx
     }
 

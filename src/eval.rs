@@ -1,10 +1,6 @@
 use crate::parser::Node;
 use crate::vars::{VAR_STORE_LIMIT, VarStore, collect_vars};
 
-// -----------------------------------------------------------------------
-// Eval — pure expression, all variables must be bound.
-// -----------------------------------------------------------------------
-
 /// Zero-allocation error type for eval.  Only converted to String at the
 /// display boundary, so the Newton hot path never heap-allocates on errors.
 #[derive(Debug)]
