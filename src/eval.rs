@@ -1,4 +1,4 @@
-use crate::parser::{Node, NodeKind};
+use crate::parser::Node;
 use crate::vars::{VAR_STORE_LIMIT, VarStore, collect_vars};
 
 // -----------------------------------------------------------------------
@@ -25,60 +25,60 @@ impl EvalError {
 }
 
 pub fn eval(arena: &[Node], idx: u32, vars: &VarStore) -> Result<f64, EvalError> {
-    match unsafe { &arena.get_unchecked(idx as usize).kind } {
-        NodeKind::Number(v) => Ok(*v),
-        NodeKind::Constant(v) => Ok(*v),
+    match unsafe { arena.get_unchecked(idx as usize) } {
+        Node::Number(v) => Ok(*v),
+        Node::Constant(v) => Ok(*v),
 
-        NodeKind::Variable(_, _, hash) => vars.get(*hash).ok_or(EvalError::UnboundVariable),
+        Node::Variable(_, _, hash) => vars.get(*hash).ok_or(EvalError::UnboundVariable),
 
         // Equation nodes are not evaluated by plain eval; use evaluate_pending.
-        NodeKind::Equation(_, _) => Err(EvalError::IsEquation),
-        NodeKind::Neg(a) => Ok(-eval(arena, *a, vars)?),
-        NodeKind::Add(a, b) => Ok(eval(arena, *a, vars)? + eval(arena, *b, vars)?),
-        NodeKind::Sub(a, b) => Ok(eval(arena, *a, vars)? - eval(arena, *b, vars)?),
-        NodeKind::Mul(a, b) => Ok(eval(arena, *a, vars)? * eval(arena, *b, vars)?),
-        NodeKind::Div(a, b) => Ok(eval(arena, *a, vars)? / eval(arena, *b, vars)?),
-        NodeKind::Pow(a, b) => Ok(eval(arena, *a, vars)?.powf(eval(arena, *b, vars)?)),
+        Node::Equation(_, _) => Err(EvalError::IsEquation),
+        Node::Neg(a) => Ok(-eval(arena, *a, vars)?),
+        Node::Add(a, b) => Ok(eval(arena, *a, vars)? + eval(arena, *b, vars)?),
+        Node::Sub(a, b) => Ok(eval(arena, *a, vars)? - eval(arena, *b, vars)?),
+        Node::Mul(a, b) => Ok(eval(arena, *a, vars)? * eval(arena, *b, vars)?),
+        Node::Div(a, b) => Ok(eval(arena, *a, vars)? / eval(arena, *b, vars)?),
+        Node::Pow(a, b) => Ok(eval(arena, *a, vars)?.powf(eval(arena, *b, vars)?)),
 
-        NodeKind::Sin(a) => Ok(eval(arena, *a, vars)?.sin()),
-        NodeKind::Cos(a) => Ok(eval(arena, *a, vars)?.cos()),
-        NodeKind::Tan(a) => Ok(eval(arena, *a, vars)?.tan()),
+        Node::Sin(a) => Ok(eval(arena, *a, vars)?.sin()),
+        Node::Cos(a) => Ok(eval(arena, *a, vars)?.cos()),
+        Node::Tan(a) => Ok(eval(arena, *a, vars)?.tan()),
 
-        NodeKind::Sec(a) => Ok(1.0 / eval(arena, *a, vars)?.cos()),
-        NodeKind::Csc(a) => Ok(1.0 / eval(arena, *a, vars)?.sin()),
-        NodeKind::Cot(a) => {
+        Node::Sec(a) => Ok(1.0 / eval(arena, *a, vars)?.cos()),
+        Node::Csc(a) => Ok(1.0 / eval(arena, *a, vars)?.sin()),
+        Node::Cot(a) => {
             let v = eval(arena, *a, vars)?;
             Ok(v.cos() / v.sin())
         }
 
-        NodeKind::Asin(a) => Ok(eval(arena, *a, vars)?.asin()),
-        NodeKind::Acos(a) => Ok(eval(arena, *a, vars)?.acos()),
-        NodeKind::Atan(a) => Ok(eval(arena, *a, vars)?.atan()),
+        Node::Asin(a) => Ok(eval(arena, *a, vars)?.asin()),
+        Node::Acos(a) => Ok(eval(arena, *a, vars)?.acos()),
+        Node::Atan(a) => Ok(eval(arena, *a, vars)?.atan()),
 
-        NodeKind::Asec(a) => Ok((1.0 / eval(arena, *a, vars)?).acos()),
-        NodeKind::Acsc(a) => Ok((1.0 / eval(arena, *a, vars)?).asin()),
-        NodeKind::Acot(a) => Ok((1.0 / eval(arena, *a, vars)?).atan()),
+        Node::Asec(a) => Ok((1.0 / eval(arena, *a, vars)?).acos()),
+        Node::Acsc(a) => Ok((1.0 / eval(arena, *a, vars)?).asin()),
+        Node::Acot(a) => Ok((1.0 / eval(arena, *a, vars)?).atan()),
 
-        NodeKind::Sinh(a) => Ok(eval(arena, *a, vars)?.sinh()),
-        NodeKind::Cosh(a) => Ok(eval(arena, *a, vars)?.cosh()),
-        NodeKind::Tanh(a) => Ok(eval(arena, *a, vars)?.tanh()),
-        NodeKind::Sech(a) => Ok(1.0 / eval(arena, *a, vars)?.cosh()),
-        NodeKind::Csch(a) => Ok(1.0 / eval(arena, *a, vars)?.sinh()),
-        NodeKind::Coth(a) => {
+        Node::Sinh(a) => Ok(eval(arena, *a, vars)?.sinh()),
+        Node::Cosh(a) => Ok(eval(arena, *a, vars)?.cosh()),
+        Node::Tanh(a) => Ok(eval(arena, *a, vars)?.tanh()),
+        Node::Sech(a) => Ok(1.0 / eval(arena, *a, vars)?.cosh()),
+        Node::Csch(a) => Ok(1.0 / eval(arena, *a, vars)?.sinh()),
+        Node::Coth(a) => {
             let v = eval(arena, *a, vars)?;
             Ok(v.cosh() / v.sinh())
         }
 
-        NodeKind::Asinh(a) => Ok(eval(arena, *a, vars)?.asinh()),
-        NodeKind::Acosh(a) => Ok(eval(arena, *a, vars)?.acosh()),
-        NodeKind::Atanh(a) => Ok(eval(arena, *a, vars)?.atanh()),
-        NodeKind::Asech(a) => Ok((1.0 / eval(arena, *a, vars)?).acosh()),
-        NodeKind::Acsch(a) => Ok((1.0 / eval(arena, *a, vars)?).asinh()),
-        NodeKind::Acoth(a) => Ok((1.0 / eval(arena, *a, vars)?).atanh()),
+        Node::Asinh(a) => Ok(eval(arena, *a, vars)?.asinh()),
+        Node::Acosh(a) => Ok(eval(arena, *a, vars)?.acosh()),
+        Node::Atanh(a) => Ok(eval(arena, *a, vars)?.atanh()),
+        Node::Asech(a) => Ok((1.0 / eval(arena, *a, vars)?).acosh()),
+        Node::Acsch(a) => Ok((1.0 / eval(arena, *a, vars)?).asinh()),
+        Node::Acoth(a) => Ok((1.0 / eval(arena, *a, vars)?).atanh()),
 
-        NodeKind::Ln(a) => Ok(eval(arena, *a, vars)?.ln()),
-        NodeKind::Log(a) => Ok(eval(arena, *a, vars)?.log10()),
-        NodeKind::Sqrt(a) => Ok(eval(arena, *a, vars)?.sqrt()),
+        Node::Ln(a) => Ok(eval(arena, *a, vars)?.ln()),
+        Node::Log(a) => Ok(eval(arena, *a, vars)?.log10()),
+        Node::Sqrt(a) => Ok(eval(arena, *a, vars)?.sqrt()),
     }
 }
 
@@ -95,14 +95,14 @@ pub fn try_simple_assign(
     root: u32,
     vars: &mut VarStore,
 ) -> Result<Option<(u32, u32, f64)>, String> {
-    let NodeKind::Equation(lhs, rhs) = &arena[root as usize].kind else {
+    let Node::Equation(lhs, rhs) = &arena[root as usize] else {
         return Ok(None); // not an equation at all
     };
     let (lhs, rhs) = (*lhs, *rhs);
 
     // lhs must be a plain variable
-    let (var_start, var_end, var_hash) = match &arena[lhs as usize].kind {
-        NodeKind::Variable(start, end, hash) => (*start, *end, *hash),
+    let (var_start, var_end, var_hash) = match &arena[lhs as usize] {
+        Node::Variable(start, end, hash) => (*start, *end, *hash),
         _ => return Ok(None), // complex lhs → treat as equation
     };
 
@@ -148,8 +148,8 @@ pub fn evaluate_pending(
     src: &str,
 ) -> Result<EvalResult, String> {
     // Plain expression (no Equation node at root)
-    let (lhs_idx, rhs_idx) = match &arena[root as usize].kind {
-        NodeKind::Equation(l, r) => (*l, *r),
+    let (lhs_idx, rhs_idx) = match &arena[root as usize] {
+        Node::Equation(l, r) => (*l, *r),
         _ => {
             let v = eval(arena, root, vars).map_err(|e| e.to_string_msg())?;
             return Ok(EvalResult {

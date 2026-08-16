@@ -8,9 +8,7 @@ const FNV_PRIME: u64 = 1099511628211;
 /// Computes hash for the whole byte slice using the FNV-1a algorithm at compile time.\
 /// **FNV-1a algorithm:**\
 /// `hash = (hash ^ byte).wrapping_mul(FNV_PRIME)`\
-/// FNV_OFFSET_BASIS is used as the initial hash value.
-/// # Arguments
-/// * `bytes` - The bytes to hash.
+/// **FNV_OFFSET_BASIS** is used as the initial hash value.
 /// # Returns
 /// The hash of the bytes.
 const fn keyword_hash(bytes: &[u8]) -> u64 {
@@ -26,9 +24,6 @@ const fn keyword_hash(bytes: &[u8]) -> u64 {
 /// Computes hash for a given byte using the FNV-1a algorithm.\
 /// **FNV-1a algorithm:**\
 /// `hash = (hash ^ byte).wrapping_mul(FNV_PRIME)`\
-/// # Arguments
-/// * `hash` - The set hash value.
-/// * `byte` - The byte to hash.
 /// # Returns
 /// The hash of a byte.
 #[inline(always)]
@@ -36,8 +31,8 @@ fn fnv1a_update(hash: u64, byte: u8) -> u64 {
     (hash ^ byte as u64).wrapping_mul(FNV_PRIME)
 }
 
-/// Builds a bitset of size 32 bytes **at compile-time**, where each byte represents 8 characters.\
-/// Each bit in the byte is set to 1 if the corresponding character is an identifier character.\
+/// Builds a bitset of 32 bytes **at compile-time**, where each byte represents 8 characters.\
+/// Each bit in the byte is set to **1** if the corresponding character is an identifier character.\
 /// # Allowed characters:
 /// - `0` .. `9`
 /// - `A` .. `Z`
@@ -69,11 +64,9 @@ const fn build_ident_table() -> [u8; 32] {
     t
 }
 
-// static: creates a global variable
-// is stored in static memory for the entire duration of the program
 static IS_IDENT: [u8; 32] = build_ident_table();
 
-/// Takes in an 8-bit unsigned character and returns a boolean indicating whether it is a valid identifier character.
+/// Takes in a u8 and returns a boolean indicating whether it is a valid identifier character.
 #[inline(always)]
 fn is_ident_char(c: u8) -> bool {
     unsafe { (*IS_IDENT.get_unchecked(c as usize / 8) >> (c % 8)) & 1 != 0 }
@@ -98,12 +91,12 @@ enum Dispatch {
 }
 
 /// Builds the `DISPATCH` lookup table at compile time.\
-/// Maps every possible byte (0-255) to a `Dispatch` variant.\
+/// Maps every possible byte (0-255) to a `Dispatch` enum variant.\
 /// - Whitespace: ` `, `\t`, `\n`, `\r`
-/// - Digits: `0`-`9`, `.`
-/// - Alpha: `a`-`z`, `A`-`Z`
+/// - Digits: `0-9`, `.`
+/// - Alpha: `a-z`, `A-Z`
 /// - Operators: `+`, `-`, `*`, `/`, `^`
-/// - Parentheses: `(`, `)`
+/// - Parentheses: `(` , `)`
 /// - Equals: `=`
 /// - Unknown: all other bytes
 const fn build_dispatch_table() -> [Dispatch; 256] {
@@ -139,7 +132,7 @@ const fn build_dispatch_table() -> [Dispatch; 256] {
     t[b'=' as usize] = Dispatch::Equals;
     t
 }
-static DISPATCH: [Dispatch; 256] = build_dispatch_table(); // stored in .rodata as static memory
+static DISPATCH: [Dispatch; 256] = build_dispatch_table();
 
 // Byte offsets (not &str) keep Token lifetime-free, so Vec<Token> can be
 // reused across REPL iterations instead of reallocating a fresh Vec<Token<'src>> per input.
@@ -195,7 +188,7 @@ impl Token {
     /// Parse the numeric value on demand.
     #[inline(always)]
     pub fn as_f64(&self, src: &str) -> f64 {
-        fast_float::parse::<f64, _>(self.raw(src)).expect("invalid number")
+        fast_float::parse::<f64, &str>(self.raw(src)).expect("invalid number")
     }
 
     /// Returns the identifier name, or None.

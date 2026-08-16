@@ -1,6 +1,4 @@
 #![allow(dead_code)]
-
-// All the keyword hash imports  from lexer.rs
 use crate::lexer::{
     KW_ACOS, KW_ACOSH, KW_ACOT, KW_ACOTH, KW_ACSC, KW_ACSCH, KW_ASEC, KW_ASECH, KW_ASIN, KW_ASINH,
     KW_ATAN, KW_ATANH, KW_COS, KW_COSH, KW_COT, KW_COTH, KW_CSC, KW_CSCH, KW_E, KW_LN, KW_LOG,
@@ -8,8 +6,6 @@ use crate::lexer::{
 };
 use fast_float2 as fast_float;
 
-/// Represents the kind of a token.
-/// the discriminant is stored in the lower 8 bits of a `u8`.
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum TokenKind {
@@ -28,9 +24,6 @@ enum TokenKind {
 }
 
 /// The left-binding power (LBP) of each token kind.
-/// The lower 8 bits of each `u8` store the LBP value.
-/// It is stored in .rodata section of the binary.
-
 static LBP: [u8; TokenKind::_Count as usize] = {
     let mut t = [0u8; TokenKind::_Count as usize];
     t[TokenKind::Equals as usize] = 5; // lowest infix; right-assoc: rbp = 4
@@ -42,45 +35,6 @@ static LBP: [u8; TokenKind::_Count as usize] = {
     t[TokenKind::Caret as usize] = 30; // right-assoc: rbp = 29
     t
 };
-
-// Maps a known math-function keyword hash to its NodeKind constructor.
-// A single match over compile-time-constant u64s compiles to an efficient
-// jump table / binary search — one dispatch instead of two linear chains.
-// Only called when an identifier is immediately followed by '(', so this
-// never runs for plain variables, numbers, or operators.
-#[inline(always)]
-fn known_function_kind(hash: u64, arg: u32) -> Option<NodeKind> {
-    Some(match hash {
-        KW_SIN => NodeKind::Sin(arg),
-        KW_COS => NodeKind::Cos(arg),
-        KW_TAN => NodeKind::Tan(arg),
-        KW_LN => NodeKind::Ln(arg),
-        KW_LOG => NodeKind::Log(arg),
-        KW_SQRT => NodeKind::Sqrt(arg),
-        KW_SEC => NodeKind::Sec(arg),
-        KW_CSC => NodeKind::Csc(arg),
-        KW_COT => NodeKind::Cot(arg),
-        KW_ASIN => NodeKind::Asin(arg),
-        KW_ACOS => NodeKind::Acos(arg),
-        KW_ATAN => NodeKind::Atan(arg),
-        KW_ACSC => NodeKind::Acsc(arg),
-        KW_ASEC => NodeKind::Asec(arg),
-        KW_ACOT => NodeKind::Acot(arg),
-        KW_SINH => NodeKind::Sinh(arg),
-        KW_COSH => NodeKind::Cosh(arg),
-        KW_TANH => NodeKind::Tanh(arg),
-        KW_SECH => NodeKind::Sech(arg),
-        KW_CSCH => NodeKind::Csch(arg),
-        KW_COTH => NodeKind::Coth(arg),
-        KW_ASINH => NodeKind::Asinh(arg),
-        KW_ACOSH => NodeKind::Acosh(arg),
-        KW_ATANH => NodeKind::Atanh(arg),
-        KW_ASECH => NodeKind::Asech(arg),
-        KW_ACSCH => NodeKind::Acsch(arg),
-        KW_ACOTH => NodeKind::Acoth(arg),
-        _ => return None,
-    })
-}
 
 /// Converts a [`Token`] to a [`TokenKind`].
 #[inline(always)]
@@ -101,7 +55,7 @@ fn kind_of(tok: &Token) -> TokenKind {
 }
 
 #[derive(Debug, Clone)]
-pub enum NodeKind {
+pub enum Node {
     Number(f64),
     /// π or e — resolved at parse time.
     Constant(f64),
@@ -154,9 +108,42 @@ pub enum NodeKind {
     Sqrt(u32),
 }
 
-#[derive(Debug, Clone)]
-pub struct Node {
-    pub kind: NodeKind,
+// A single match over compile-time-constant u64s compiles to an efficient
+// jump table / binary search — one dispatch instead of two linear chains.
+// Only called when an identifier is immediately followed by '(', so this
+// never runs for plain variables, numbers, or operators.
+#[inline(always)]
+fn known_function_kind(hash: u64, arg: u32) -> Option<Node> {
+    Some(match hash {
+        KW_SIN => Node::Sin(arg),
+        KW_COS => Node::Cos(arg),
+        KW_TAN => Node::Tan(arg),
+        KW_LN => Node::Ln(arg),
+        KW_LOG => Node::Log(arg),
+        KW_SQRT => Node::Sqrt(arg),
+        KW_SEC => Node::Sec(arg),
+        KW_CSC => Node::Csc(arg),
+        KW_COT => Node::Cot(arg),
+        KW_ASIN => Node::Asin(arg),
+        KW_ACOS => Node::Acos(arg),
+        KW_ATAN => Node::Atan(arg),
+        KW_ACSC => Node::Acsc(arg),
+        KW_ASEC => Node::Asec(arg),
+        KW_ACOT => Node::Acot(arg),
+        KW_SINH => Node::Sinh(arg),
+        KW_COSH => Node::Cosh(arg),
+        KW_TANH => Node::Tanh(arg),
+        KW_SECH => Node::Sech(arg),
+        KW_CSCH => Node::Csch(arg),
+        KW_COTH => Node::Coth(arg),
+        KW_ASINH => Node::Asinh(arg),
+        KW_ACOSH => Node::Acosh(arg),
+        KW_ATANH => Node::Atanh(arg),
+        KW_ASECH => Node::Asech(arg),
+        KW_ACSCH => Node::Acsch(arg),
+        KW_ACOTH => Node::Acoth(arg),
+        _ => return None,
+    })
 }
 
 pub struct Parser<'src, 'arena> {
@@ -177,9 +164,9 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     }
 
     #[inline(always)]
-    fn push(&mut self, kind: NodeKind) -> u32 {
+    fn push(&mut self, kind: Node) -> u32 {
         let idx = self.arena.len() as u32;
-        self.arena.push(Node { kind });
+        self.arena.push(kind);
         idx
     }
 
@@ -237,15 +224,15 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 let raw = &self.src[start as usize..end as usize];
                 let v = fast_float::parse::<f64, _>(raw)
                     .map_err(|e| format!("invalid number '{}': {}", raw, e))?;
-                Ok(self.push(NodeKind::Number(v)))
+                Ok(self.push(Node::Number(v)))
             }
 
             Token::Identifier { start, end, hash } => {
                 if hash == KW_PI {
-                    return Ok(self.push(NodeKind::Constant(std::f64::consts::PI)));
+                    return Ok(self.push(Node::Constant(std::f64::consts::PI)));
                 }
                 if hash == KW_E {
-                    return Ok(self.push(NodeKind::Constant(std::f64::consts::E)));
+                    return Ok(self.push(Node::Constant(std::f64::consts::E)));
                 }
 
                 // Cheap check first: only bother resolving which function
@@ -261,16 +248,16 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                     }
                     // Not a recognized function: identifier '(' ... ')' is
                     // implicit multiplication, e.g. "x(0)" -> x * (0).
-                    let var = self.push(NodeKind::Variable(start, end, hash));
-                    return Ok(self.push(NodeKind::Mul(var, arg)));
+                    let var = self.push(Node::Variable(start, end, hash));
+                    return Ok(self.push(Node::Mul(var, arg)));
                 }
 
-                Ok(self.push(NodeKind::Variable(start, end, hash)))
+                Ok(self.push(Node::Variable(start, end, hash)))
             }
 
             Token::Minus => {
                 let inner = self.parse_expr(25)?;
-                Ok(self.push(NodeKind::Neg(inner)))
+                Ok(self.push(Node::Neg(inner)))
             }
 
             Token::LeftParenthesis => {
@@ -292,27 +279,27 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             // arbitrary expressions. No lhs restriction at parse time.
             Token::Equals => {
                 let right = self.parse_expr(4)?; // rbp=4 → right-associative
-                Ok(self.push(NodeKind::Equation(left, right)))
+                Ok(self.push(Node::Equation(left, right)))
             }
             Token::Plus => {
                 let right = self.parse_expr(10)?;
-                Ok(self.push(NodeKind::Add(left, right)))
+                Ok(self.push(Node::Add(left, right)))
             }
             Token::Minus => {
                 let right = self.parse_expr(10)?;
-                Ok(self.push(NodeKind::Sub(left, right)))
+                Ok(self.push(Node::Sub(left, right)))
             }
             Token::Asterisk => {
                 let right = self.parse_expr(20)?;
-                Ok(self.push(NodeKind::Mul(left, right)))
+                Ok(self.push(Node::Mul(left, right)))
             }
             Token::ForwardSlash => {
                 let right = self.parse_expr(20)?;
-                Ok(self.push(NodeKind::Div(left, right)))
+                Ok(self.push(Node::Div(left, right)))
             }
             Token::Caret => {
                 let right = self.parse_expr(29)?;
-                Ok(self.push(NodeKind::Pow(left, right)))
+                Ok(self.push(Node::Pow(left, right)))
             }
             // Implicit multiply: "x(0)" -> x * (0). The '(' was just
             // consumed by advance(); parse the inner expression as a normal
@@ -320,7 +307,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             Token::LeftParenthesis => {
                 let right = self.parse_expr(0)?;
                 self.expect_rparen()?;
-                Ok(self.push(NodeKind::Mul(left, right)))
+                Ok(self.push(Node::Mul(left, right)))
             }
             other => Err(format!("unexpected token: {:?}", other)),
         }
@@ -349,7 +336,7 @@ mod tests {
         let src = "x^2+2*x=2*x-3";
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
-        matches!(arena[root as usize].kind, NodeKind::Equation(_, _));
+        matches!(arena[root as usize], Node::Equation(_, _));
     }
 
     #[test]

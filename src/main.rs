@@ -3,10 +3,12 @@ use std::io::{BufRead, BufWriter, Write};
 
 use expression::eval::{EvalError, EvalResultKind, eval, evaluate_pending, try_simple_assign};
 use expression::lexer::{Token, Tokenizer};
-use expression::parser::{Node, NodeKind, Parser};
+use expression::parser::{Node, Parser};
 use expression::simplify::simplify;
 use expression::vars::{VarStore, collect_vars};
+
 use zmij::Buffer as DtoaBuffer;
+
 #[cfg(feature = "dhat-heap")]
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
@@ -71,10 +73,10 @@ fn write_value<W: Write>(out: &mut W, v: f64) -> std::io::Result<()> {
     }
 }
 
-fn write_node_compact<W: Write>(out: &mut W, kind: &NodeKind, src: &str) -> std::io::Result<()> {
+fn write_node_compact<W: Write>(out: &mut W, kind: &Node, src: &str) -> std::io::Result<()> {
     match kind {
-        NodeKind::Number(v) => write_value(out, *v),
-        NodeKind::Constant(v) => {
+        Node::Number(v) => write_value(out, *v),
+        Node::Constant(v) => {
             if (v - std::f64::consts::PI).abs() < 1e-14 {
                 write!(out, "π")
             } else if (v - std::f64::consts::E).abs() < 1e-14 {
@@ -83,107 +85,107 @@ fn write_node_compact<W: Write>(out: &mut W, kind: &NodeKind, src: &str) -> std:
                 write_value(out, *v)
             }
         }
-        NodeKind::Variable(s, e, _) => write!(out, "{}", &src[*s as usize..*e as usize]),
-        NodeKind::Neg(a) => write!(out, "-(n{a})"),
-        NodeKind::Equation(a, b) => write!(out, "n{a} = n{b}"),
+        Node::Variable(s, e, _) => write!(out, "{}", &src[*s as usize..*e as usize]),
+        Node::Neg(a) => write!(out, "-(n{a})"),
+        Node::Equation(a, b) => write!(out, "n{a} = n{b}"),
 
-        NodeKind::Add(a, b) => write!(out, "n{a} + n{b}"),
-        NodeKind::Sub(a, b) => write!(out, "n{a} - n{b}"),
-        NodeKind::Mul(a, b) => write!(out, "n{a} * n{b}"),
-        NodeKind::Div(a, b) => write!(out, "n{a} / n{b}"),
-        NodeKind::Pow(a, b) => write!(out, "n{a} ^ n{b}"),
+        Node::Add(a, b) => write!(out, "n{a} + n{b}"),
+        Node::Sub(a, b) => write!(out, "n{a} - n{b}"),
+        Node::Mul(a, b) => write!(out, "n{a} * n{b}"),
+        Node::Div(a, b) => write!(out, "n{a} / n{b}"),
+        Node::Pow(a, b) => write!(out, "n{a} ^ n{b}"),
 
-        NodeKind::Sin(a) => write!(out, "sin(n{a})"),
-        NodeKind::Cos(a) => write!(out, "cos(n{a})"),
-        NodeKind::Tan(a) => write!(out, "tan(n{a})"),
+        Node::Sin(a) => write!(out, "sin(n{a})"),
+        Node::Cos(a) => write!(out, "cos(n{a})"),
+        Node::Tan(a) => write!(out, "tan(n{a})"),
 
-        NodeKind::Ln(a) => write!(out, "ln(n{a})"),
-        NodeKind::Log(a) => write!(out, "log(n{a})"),
-        NodeKind::Sqrt(a) => write!(out, "sqrt(n{a})"),
+        Node::Ln(a) => write!(out, "ln(n{a})"),
+        Node::Log(a) => write!(out, "log(n{a})"),
+        Node::Sqrt(a) => write!(out, "sqrt(n{a})"),
 
-        NodeKind::Sec(a) => write!(out, "sec(n{a})"),
-        NodeKind::Csc(a) => write!(out, "csc(n{a})"),
-        NodeKind::Cot(a) => write!(out, "cot(n{a})"),
+        Node::Sec(a) => write!(out, "sec(n{a})"),
+        Node::Csc(a) => write!(out, "csc(n{a})"),
+        Node::Cot(a) => write!(out, "cot(n{a})"),
 
-        NodeKind::Asin(a) => write!(out, "asin(n{a})"),
-        NodeKind::Acos(a) => write!(out, "acos(n{a})"),
-        NodeKind::Atan(a) => write!(out, "atan(n{a})"),
-        NodeKind::Acsc(a) => write!(out, "acsc(n{a})"),
-        NodeKind::Asec(a) => write!(out, "asec(n{a})"),
-        NodeKind::Acot(a) => write!(out, "acot(n{a})"),
+        Node::Asin(a) => write!(out, "asin(n{a})"),
+        Node::Acos(a) => write!(out, "acos(n{a})"),
+        Node::Atan(a) => write!(out, "atan(n{a})"),
+        Node::Acsc(a) => write!(out, "acsc(n{a})"),
+        Node::Asec(a) => write!(out, "asec(n{a})"),
+        Node::Acot(a) => write!(out, "acot(n{a})"),
 
-        NodeKind::Sinh(a) => write!(out, "sinh(n{a})"),
-        NodeKind::Cosh(a) => write!(out, "cosh(n{a})"),
-        NodeKind::Tanh(a) => write!(out, "tanh(n{a})"),
-        NodeKind::Sech(a) => write!(out, "sech(n{a})"),
-        NodeKind::Csch(a) => write!(out, "csch(n{a})"),
-        NodeKind::Coth(a) => write!(out, "coth(n{a})"),
+        Node::Sinh(a) => write!(out, "sinh(n{a})"),
+        Node::Cosh(a) => write!(out, "cosh(n{a})"),
+        Node::Tanh(a) => write!(out, "tanh(n{a})"),
+        Node::Sech(a) => write!(out, "sech(n{a})"),
+        Node::Csch(a) => write!(out, "csch(n{a})"),
+        Node::Coth(a) => write!(out, "coth(n{a})"),
 
-        NodeKind::Asinh(a) => write!(out, "asinh(n{a})"),
-        NodeKind::Acosh(a) => write!(out, "acosh(n{a})"),
-        NodeKind::Atanh(a) => write!(out, "atanh(n{a})"),
-        NodeKind::Asech(a) => write!(out, "asech(n{a})"),
-        NodeKind::Acsch(a) => write!(out, "acsch(n{a})"),
-        NodeKind::Acoth(a) => write!(out, "acoth(n{a})"),
+        Node::Asinh(a) => write!(out, "asinh(n{a})"),
+        Node::Acosh(a) => write!(out, "acosh(n{a})"),
+        Node::Atanh(a) => write!(out, "atanh(n{a})"),
+        Node::Asech(a) => write!(out, "asech(n{a})"),
+        Node::Acsch(a) => write!(out, "acsch(n{a})"),
+        Node::Acoth(a) => write!(out, "acoth(n{a})"),
     }
 }
 
-fn write_node_verbose<W: Write>(out: &mut W, kind: &NodeKind, src: &str) -> std::io::Result<()> {
+fn write_node_verbose<W: Write>(out: &mut W, kind: &Node, src: &str) -> std::io::Result<()> {
     match kind {
-        NodeKind::Number(v) => {
+        Node::Number(v) => {
             write!(out, "Number(")?;
             write_value(out, *v)?;
             write!(out, ")")
         }
-        NodeKind::Constant(v) => {
+        Node::Constant(v) => {
             write!(out, "Constant(")?;
             write_value(out, *v)?;
             write!(out, ")")
         }
-        NodeKind::Variable(s, e, _) => {
+        Node::Variable(s, e, _) => {
             write!(out, "Variable({:?})", &src[*s as usize..*e as usize])
         }
-        NodeKind::Neg(c) => write!(out, "Neg(n{c})"),
-        NodeKind::Equation(l, r) => write!(out, "Equation(n{l}, n{r})"),
+        Node::Neg(c) => write!(out, "Neg(n{c})"),
+        Node::Equation(l, r) => write!(out, "Equation(n{l}, n{r})"),
 
-        NodeKind::Add(l, r) => write!(out, "Add(n{l}, n{r})"),
-        NodeKind::Sub(l, r) => write!(out, "Sub(n{l}, n{r})"),
-        NodeKind::Mul(l, r) => write!(out, "Mul(n{l}, n{r})"),
-        NodeKind::Div(l, r) => write!(out, "Div(n{l}, n{r})"),
-        NodeKind::Pow(l, r) => write!(out, "Pow(n{l}, n{r})"),
+        Node::Add(l, r) => write!(out, "Add(n{l}, n{r})"),
+        Node::Sub(l, r) => write!(out, "Sub(n{l}, n{r})"),
+        Node::Mul(l, r) => write!(out, "Mul(n{l}, n{r})"),
+        Node::Div(l, r) => write!(out, "Div(n{l}, n{r})"),
+        Node::Pow(l, r) => write!(out, "Pow(n{l}, n{r})"),
 
-        NodeKind::Sin(c) => write!(out, "Sin(n{c})"),
-        NodeKind::Cos(c) => write!(out, "Cos(n{c})"),
-        NodeKind::Tan(c) => write!(out, "Tan(n{c})"),
+        Node::Sin(c) => write!(out, "Sin(n{c})"),
+        Node::Cos(c) => write!(out, "Cos(n{c})"),
+        Node::Tan(c) => write!(out, "Tan(n{c})"),
 
-        NodeKind::Ln(c) => write!(out, "Ln(n{c})"),
-        NodeKind::Log(c) => write!(out, "Log(n{c})"),
-        NodeKind::Sqrt(c) => write!(out, "Sqrt(n{c})"),
+        Node::Ln(c) => write!(out, "Ln(n{c})"),
+        Node::Log(c) => write!(out, "Log(n{c})"),
+        Node::Sqrt(c) => write!(out, "Sqrt(n{c})"),
 
-        NodeKind::Sec(c) => write!(out, "Sec(n{c})"),
-        NodeKind::Csc(c) => write!(out, "Csc(n{c})"),
-        NodeKind::Cot(c) => write!(out, "Cot(n{c})"),
+        Node::Sec(c) => write!(out, "Sec(n{c})"),
+        Node::Csc(c) => write!(out, "Csc(n{c})"),
+        Node::Cot(c) => write!(out, "Cot(n{c})"),
 
-        NodeKind::Asin(c) => write!(out, "Asin(n{c})"),
-        NodeKind::Acos(c) => write!(out, "Acos(n{c})"),
-        NodeKind::Atan(c) => write!(out, "Atan(n{c})"),
-        NodeKind::Acsc(c) => write!(out, "Acsc(n{c})"),
-        NodeKind::Asec(c) => write!(out, "Asec(n{c})"),
-        NodeKind::Acot(c) => write!(out, "Acot(n{c})"),
+        Node::Asin(c) => write!(out, "Asin(n{c})"),
+        Node::Acos(c) => write!(out, "Acos(n{c})"),
+        Node::Atan(c) => write!(out, "Atan(n{c})"),
+        Node::Acsc(c) => write!(out, "Acsc(n{c})"),
+        Node::Asec(c) => write!(out, "Asec(n{c})"),
+        Node::Acot(c) => write!(out, "Acot(n{c})"),
 
-        NodeKind::Sinh(c) => write!(out, "Sinh(n{c})"),
-        NodeKind::Cosh(c) => write!(out, "Cosh(n{c})"),
-        NodeKind::Tanh(c) => write!(out, "Tanh(n{c})"),
-        NodeKind::Sech(c) => write!(out, "Sech(n{c})"),
-        NodeKind::Csch(c) => write!(out, "Csch(n{c})"),
-        NodeKind::Coth(c) => write!(out, "Coth(n{c})"),
+        Node::Sinh(c) => write!(out, "Sinh(n{c})"),
+        Node::Cosh(c) => write!(out, "Cosh(n{c})"),
+        Node::Tanh(c) => write!(out, "Tanh(n{c})"),
+        Node::Sech(c) => write!(out, "Sech(n{c})"),
+        Node::Csch(c) => write!(out, "Csch(n{c})"),
+        Node::Coth(c) => write!(out, "Coth(n{c})"),
 
-        NodeKind::Asinh(c) => write!(out, "Asinh(n{c})"),
-        NodeKind::Acosh(c) => write!(out, "Acosh(n{c})"),
-        NodeKind::Atanh(c) => write!(out, "Atanh(n{c})"),
-        NodeKind::Asech(c) => write!(out, "Asech(n{c})"),
-        NodeKind::Acsch(c) => write!(out, "Acsch(n{c})"),
-        NodeKind::Acoth(c) => write!(out, "Acoth(n{c})"),
+        Node::Asinh(c) => write!(out, "Asinh(n{c})"),
+        Node::Acosh(c) => write!(out, "Acosh(n{c})"),
+        Node::Atanh(c) => write!(out, "Atanh(n{c})"),
+        Node::Asech(c) => write!(out, "Asech(n{c})"),
+        Node::Acsch(c) => write!(out, "Acsch(n{c})"),
+        Node::Acoth(c) => write!(out, "Acoth(n{c})"),
     }
 }
 
@@ -199,9 +201,9 @@ fn write_node_recursive<W: Write>(
     arena: &[Node],
     src: &str,
 ) -> std::io::Result<()> {
-    match &arena[idx as usize].kind {
-        NodeKind::Number(v) => write_value(out, *v),
-        NodeKind::Constant(v) => {
+    match &arena[idx as usize] {
+        Node::Number(v) => write_value(out, *v),
+        Node::Constant(v) => {
             if (v - std::f64::consts::PI).abs() < 1e-14 {
                 write!(out, "π")
             } else if (v - std::f64::consts::E).abs() < 1e-14 {
@@ -210,82 +212,82 @@ fn write_node_recursive<W: Write>(
                 write_value(out, *v)
             }
         }
-        NodeKind::Variable(s, e, _) => write!(out, "{}", &src[*s as usize..*e as usize]),
-        NodeKind::Neg(a) => {
+        Node::Variable(s, e, _) => write!(out, "{}", &src[*s as usize..*e as usize]),
+        Node::Neg(a) => {
             let a = *a;
             write!(out, "-(")?;
             write_node_recursive(out, a, arena, src)?;
             write!(out, ")")
         }
-        NodeKind::Equation(a, b) => {
+        Node::Equation(a, b) => {
             let (a, b) = (*a, *b);
             write_node_recursive(out, a, arena, src)?;
             write!(out, " = ")?;
             write_node_recursive(out, b, arena, src)
         }
-        NodeKind::Add(a, b) => {
+        Node::Add(a, b) => {
             let (a, b) = (*a, *b);
             write_node_recursive(out, a, arena, src)?;
             write!(out, " + ")?;
             write_node_recursive(out, b, arena, src)
         }
-        NodeKind::Sub(a, b) => {
+        Node::Sub(a, b) => {
             let (a, b) = (*a, *b);
             write_node_recursive(out, a, arena, src)?;
             write!(out, " - ")?;
             write_node_recursive(out, b, arena, src)
         }
-        NodeKind::Mul(a, b) => {
+        Node::Mul(a, b) => {
             let (a, b) = (*a, *b);
             write_node_recursive(out, a, arena, src)?;
             write!(out, " * ")?;
             write_node_recursive(out, b, arena, src)
         }
-        NodeKind::Div(a, b) => {
+        Node::Div(a, b) => {
             let (a, b) = (*a, *b);
             write_node_recursive(out, a, arena, src)?;
             write!(out, " / ")?;
             write_node_recursive(out, b, arena, src)
         }
-        NodeKind::Pow(a, b) => {
+        Node::Pow(a, b) => {
             let (a, b) = (*a, *b);
             write_node_recursive(out, a, arena, src)?;
             write!(out, " ^ ")?;
             write_node_recursive(out, b, arena, src)
         }
 
-        NodeKind::Sin(a) => write_unary_recursive(out, "sin", *a, arena, src),
-        NodeKind::Cos(a) => write_unary_recursive(out, "cos", *a, arena, src),
-        NodeKind::Tan(a) => write_unary_recursive(out, "tan", *a, arena, src),
+        Node::Sin(a) => write_unary_recursive(out, "sin", *a, arena, src),
+        Node::Cos(a) => write_unary_recursive(out, "cos", *a, arena, src),
+        Node::Tan(a) => write_unary_recursive(out, "tan", *a, arena, src),
 
-        NodeKind::Ln(a) => write_unary_recursive(out, "ln", *a, arena, src),
-        NodeKind::Log(a) => write_unary_recursive(out, "log", *a, arena, src),
-        NodeKind::Sqrt(a) => write_unary_recursive(out, "sqrt", *a, arena, src),
+        Node::Ln(a) => write_unary_recursive(out, "ln", *a, arena, src),
+        Node::Log(a) => write_unary_recursive(out, "log", *a, arena, src),
+        Node::Sqrt(a) => write_unary_recursive(out, "sqrt", *a, arena, src),
 
-        NodeKind::Sec(a) => write_unary_recursive(out, "sec", *a, arena, src),
-        NodeKind::Csc(a) => write_unary_recursive(out, "csc", *a, arena, src),
-        NodeKind::Cot(a) => write_unary_recursive(out, "cot", *a, arena, src),
+        Node::Sec(a) => write_unary_recursive(out, "sec", *a, arena, src),
+        Node::Csc(a) => write_unary_recursive(out, "csc", *a, arena, src),
+        Node::Cot(a) => write_unary_recursive(out, "cot", *a, arena, src),
 
-        NodeKind::Asin(a) => write_unary_recursive(out, "asin", *a, arena, src),
-        NodeKind::Acos(a) => write_unary_recursive(out, "acos", *a, arena, src),
-        NodeKind::Atan(a) => write_unary_recursive(out, "atan", *a, arena, src),
-        NodeKind::Acsc(a) => write_unary_recursive(out, "acsc", *a, arena, src),
-        NodeKind::Asec(a) => write_unary_recursive(out, "asec", *a, arena, src),
-        NodeKind::Acot(a) => write_unary_recursive(out, "acot", *a, arena, src),
+        Node::Asin(a) => write_unary_recursive(out, "asin", *a, arena, src),
+        Node::Acos(a) => write_unary_recursive(out, "acos", *a, arena, src),
+        Node::Atan(a) => write_unary_recursive(out, "atan", *a, arena, src),
+        Node::Acsc(a) => write_unary_recursive(out, "acsc", *a, arena, src),
+        Node::Asec(a) => write_unary_recursive(out, "asec", *a, arena, src),
+        Node::Acot(a) => write_unary_recursive(out, "acot", *a, arena, src),
 
-        NodeKind::Sinh(a) => write_unary_recursive(out, "sinh", *a, arena, src),
-        NodeKind::Cosh(a) => write_unary_recursive(out, "cosh", *a, arena, src),
-        NodeKind::Tanh(a) => write_unary_recursive(out, "tanh", *a, arena, src),
-        NodeKind::Sech(a) => write_unary_recursive(out, "sech", *a, arena, src),
-        NodeKind::Csch(a) => write_unary_recursive(out, "csch", *a, arena, src),
-        NodeKind::Coth(a) => write_unary_recursive(out, "coth", *a, arena, src),
+        Node::Sinh(a) => write_unary_recursive(out, "sinh", *a, arena, src),
+        Node::Cosh(a) => write_unary_recursive(out, "cosh", *a, arena, src),
+        Node::Tanh(a) => write_unary_recursive(out, "tanh", *a, arena, src),
+        Node::Sech(a) => write_unary_recursive(out, "sech", *a, arena, src),
+        Node::Csch(a) => write_unary_recursive(out, "csch", *a, arena, src),
+        Node::Coth(a) => write_unary_recursive(out, "coth", *a, arena, src),
 
-        NodeKind::Asinh(a) => write_unary_recursive(out, "asinh", *a, arena, src),
-        NodeKind::Acosh(a) => write_unary_recursive(out, "acosh", *a, arena, src),
-        NodeKind::Atanh(a) => write_unary_recursive(out, "atanh", *a, arena, src),
-        NodeKind::Asech(a) => write_unary_recursive(out, "asech", *a, arena, src),
-        NodeKind::Acsch(a) => write_unary_recursive(out, "acsch", *a, arena, src),
-        NodeKind::Acoth(a) => write_unary_recursive(out, "acoth", *a, arena, src),
+        Node::Asinh(a) => write_unary_recursive(out, "asinh", *a, arena, src),
+        Node::Acosh(a) => write_unary_recursive(out, "acosh", *a, arena, src),
+        Node::Atanh(a) => write_unary_recursive(out, "atanh", *a, arena, src),
+        Node::Asech(a) => write_unary_recursive(out, "asech", *a, arena, src),
+        Node::Acsch(a) => write_unary_recursive(out, "acsch", *a, arena, src),
+        Node::Acoth(a) => write_unary_recursive(out, "acoth", *a, arena, src),
     }
 }
 
@@ -313,9 +315,9 @@ fn write_arena<W: Write>(
     for (i, node) in arena.iter().enumerate() {
         write!(out, "\n  n{i}: ")?;
         if verbose {
-            write_node_verbose(out, &node.kind, src)?;
+            write_node_verbose(out, &node, src)?;
         } else {
-            write_node_compact(out, &node.kind, src)?;
+            write_node_compact(out, &node, src)?;
         }
     }
     Ok(())
@@ -629,12 +631,12 @@ fn main() {
         }
 
         // ---- dispatch on root kind -----------------------------------------
-        match &arena[root as usize].kind {
+        match &arena[root as usize] {
             // -----------------------------------------------------------------
             // Equation node: try simple assignment first (x = <value>);
             // if the lhs is complex or rhs has free vars, store as pending.
             // -----------------------------------------------------------------
-            NodeKind::Equation(_, _) => {
+            Node::Equation(_, _) => {
                 match try_simple_assign(&arena, root, &mut vars) {
                     Err(e) => {
                         eprintln!("Error: {e}");

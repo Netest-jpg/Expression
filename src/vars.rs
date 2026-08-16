@@ -1,4 +1,4 @@
-use crate::parser::{Node, NodeKind};
+use crate::parser::Node;
 
 // -----------------------------------------------------------------------
 // Variable store — linear scan over (hash, value) pairs.
@@ -181,47 +181,47 @@ pub fn collect_vars(arena: &[Node], root: u32) -> VarList {
 }
 
 fn collect_vars_inner(arena: &[Node], idx: u32, out: &mut VarList) {
-    match &arena[idx as usize].kind {
-        NodeKind::Variable(start, end, hash) => {
+    match &arena[idx as usize] {
+        Node::Variable(start, end, hash) => {
             out.push_unique(*hash, *start, *end);
         }
-        NodeKind::Number(_) | NodeKind::Constant(_) => {}
-        NodeKind::Neg(a)
-        | NodeKind::Sin(a)
-        | NodeKind::Cos(a)
-        | NodeKind::Tan(a)
-        | NodeKind::Sec(a)
-        | NodeKind::Csc(a)
-        | NodeKind::Cot(a)
-        | NodeKind::Asin(a)
-        | NodeKind::Acos(a)
-        | NodeKind::Atan(a)
-        | NodeKind::Acsc(a)
-        | NodeKind::Asec(a)
-        | NodeKind::Acot(a)
-        | NodeKind::Sinh(a)
-        | NodeKind::Cosh(a)
-        | NodeKind::Tanh(a)
-        | NodeKind::Sech(a)
-        | NodeKind::Csch(a)
-        | NodeKind::Coth(a)
-        | NodeKind::Asinh(a)
-        | NodeKind::Acosh(a)
-        | NodeKind::Atanh(a)
-        | NodeKind::Asech(a)
-        | NodeKind::Acsch(a)
-        | NodeKind::Acoth(a)
-        | NodeKind::Ln(a)
-        | NodeKind::Log(a)
-        | NodeKind::Sqrt(a) => {
+        Node::Number(_) | Node::Constant(_) => {}
+        Node::Neg(a)
+        | Node::Sin(a)
+        | Node::Cos(a)
+        | Node::Tan(a)
+        | Node::Sec(a)
+        | Node::Csc(a)
+        | Node::Cot(a)
+        | Node::Asin(a)
+        | Node::Acos(a)
+        | Node::Atan(a)
+        | Node::Acsc(a)
+        | Node::Asec(a)
+        | Node::Acot(a)
+        | Node::Sinh(a)
+        | Node::Cosh(a)
+        | Node::Tanh(a)
+        | Node::Sech(a)
+        | Node::Csch(a)
+        | Node::Coth(a)
+        | Node::Asinh(a)
+        | Node::Acosh(a)
+        | Node::Atanh(a)
+        | Node::Asech(a)
+        | Node::Acsch(a)
+        | Node::Acoth(a)
+        | Node::Ln(a)
+        | Node::Log(a)
+        | Node::Sqrt(a) => {
             collect_vars_inner(arena, *a, out);
         }
-        NodeKind::Add(a, b)
-        | NodeKind::Sub(a, b)
-        | NodeKind::Mul(a, b)
-        | NodeKind::Div(a, b)
-        | NodeKind::Pow(a, b)
-        | NodeKind::Equation(a, b) => {
+        Node::Add(a, b)
+        | Node::Sub(a, b)
+        | Node::Mul(a, b)
+        | Node::Div(a, b)
+        | Node::Pow(a, b)
+        | Node::Equation(a, b) => {
             collect_vars_inner(arena, *a, out);
             collect_vars_inner(arena, *b, out);
         }

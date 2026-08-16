@@ -1,7 +1,7 @@
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use expression::eval::{evaluate_pending, try_simple_assign};
 use expression::lexer::Tokenizer;
-use expression::parser::{Node, NodeKind, Parser};
+use expression::parser::{Node, Parser};
 use expression::simplify::simplify;
 use expression::vars::{VarStore, collect_vars};
 
@@ -82,21 +82,21 @@ fn bench_collect_vars(c: &mut Criterion) {
     });
 }
 
-fn push(arena: &mut Vec<Node>, kind: NodeKind) -> u32 {
+fn push(arena: &mut Vec<Node>, kind: Node) -> u32 {
     let idx = arena.len() as u32;
-    arena.push(Node { kind });
+    arena.push(kind);
     idx
 }
 
 fn bench_simplify_only(c: &mut Criterion) {
     let mut arena = Vec::new();
-    let n3 = push(&mut arena, NodeKind::Number(3.0));
-    let n2 = push(&mut arena, NodeKind::Number(2.0));
-    let n0 = push(&mut arena, NodeKind::Number(0.0));
-    let n1 = push(&mut arena, NodeKind::Number(1.0));
-    let sum = push(&mut arena, NodeKind::Add(n2, n0));
-    let mul = push(&mut arena, NodeKind::Mul(n3, sum));
-    let root = push(&mut arena, NodeKind::Div(mul, n1));
+    let n3 = push(&mut arena, Node::Number(3.0));
+    let n2 = push(&mut arena, Node::Number(2.0));
+    let n0 = push(&mut arena, Node::Number(0.0));
+    let n1 = push(&mut arena, Node::Number(1.0));
+    let sum = push(&mut arena, Node::Add(n2, n0));
+    let mul = push(&mut arena, Node::Mul(n3, sum));
+    let root = push(&mut arena, Node::Div(mul, n1));
 
     c.bench_function("simplify only", |b| {
         b.iter(|| {
