@@ -118,11 +118,8 @@ pub fn try_simple_assign(
 //                   print  `unknown = value`.
 //   • >1 free vars → return Err listing which vars still need values.
 // -----------------------------------------------------------------------
-pub struct EvalResult {
-    pub kind: EvalResultKind,
-}
 
-pub enum EvalResultKind {
+pub enum EvalResult {
     /// All vars bound: lhs value and rhs value (should be equal for an equation).
     Verified { lhs: f64, rhs: f64 },
     /// One free var solved numerically.
@@ -148,9 +145,7 @@ pub fn evaluate_pending(
         Node::Equation(l, r) => (*l, *r),
         _ => {
             let v = eval(arena, root, vars).map_err(|e| e.to_string_msg())?;
-            return Ok(EvalResult {
-                kind: EvalResultKind::Value(v),
-            });
+            return Ok(EvalResult::Value(v));
         }
     };
 
@@ -168,11 +163,9 @@ pub fn evaluate_pending(
             // All bound — evaluate both sides.
             let lhs_val = eval(arena, lhs_idx, vars).map_err(|e| e.to_string_msg())?;
             let rhs_val = eval(arena, rhs_idx, vars).map_err(|e| e.to_string_msg())?;
-            Ok(EvalResult {
-                kind: EvalResultKind::Verified {
-                    lhs: lhs_val,
-                    rhs: rhs_val,
-                },
+            Ok(EvalResult::Verified {
+                lhs: lhs_val,
+                rhs: rhs_val,
             })
         }
 
@@ -215,12 +208,10 @@ pub fn evaluate_pending(
                 ([solution, 0.0], 1u8)
             };
 
-            Ok(EvalResult {
-                kind: EvalResultKind::Solved {
-                    name,
-                    values,
-                    count,
-                },
+            Ok(EvalResult::Solved {
+                name,
+                values,
+                count,
             })
         }
 
@@ -404,7 +395,7 @@ mod tests {
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
         let result = evaluate_pending(&arena, root, &vars, src).unwrap();
-        if let EvalResultKind::Solved { name, values, .. } = result.kind {
+        if let EvalResult::Solved { name, values, .. } = result {
             assert_eq!(name, "x");
             assert!((values[0] - 3.0).abs() < 1e-8);
         } else {
@@ -422,7 +413,7 @@ mod tests {
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
         let result = evaluate_pending(&arena, root, &vars, src).unwrap();
-        if let EvalResultKind::Solved { values, count, .. } = result.kind {
+        if let EvalResult::Solved { values, count, .. } = result {
             assert_eq!(count, 2, "expected two roots for x^2=9");
             for i in 0..count as usize {
                 assert!(

@@ -1,7 +1,7 @@
 use std::io::IsTerminal;
 use std::io::{BufRead, BufWriter, Write};
 
-use expression::eval::{EvalError, EvalResultKind, eval, evaluate_pending, try_simple_assign};
+use expression::eval::{EvalError, EvalResult, eval, evaluate_pending, try_simple_assign};
 use expression::lexer::{Token, Tokenizer};
 use expression::parser::{Node, Parser};
 use expression::simplify::simplify;
@@ -472,13 +472,13 @@ fn main() {
                     Err(e) => eprintln!("Error: {e}"),
                     Ok(result) => {
                         if should_print {
-                            match result.kind {
-                                EvalResultKind::Value(v) => {
+                            match result {
+                                EvalResult::Value(v) => {
                                     write!(out, "  = ").ok();
                                     write_value(&mut out, v).ok();
                                     writeln!(out).ok();
                                 }
-                                EvalResultKind::Verified { lhs, rhs } => {
+                                EvalResult::Verified { lhs, rhs } => {
                                     if (lhs - rhs).abs() < 1e-9 {
                                         write!(out, "  ✓  ").ok();
                                         write_value(&mut out, lhs).ok();
@@ -493,7 +493,7 @@ fn main() {
                                         writeln!(out, "  (false)").ok();
                                     }
                                 }
-                                EvalResultKind::Solved {
+                                EvalResult::Solved {
                                     name,
                                     values,
                                     count,
