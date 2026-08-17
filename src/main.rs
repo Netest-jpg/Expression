@@ -2,7 +2,7 @@ use std::io::IsTerminal;
 use std::io::{BufRead, BufWriter, Write};
 
 use expression::evaluation::{
-    EvaluationError, EvaluationResult, eval, evaluate_pending, try_simple_assign,
+    EvaluationError, EvaluationResult, evaluate, evaluate_pending, try_simple_assign,
 };
 use expression::lexer::{Token, Tokenizer};
 use expression::parser::{Node, Parser};
@@ -721,7 +721,7 @@ fn main() {
             }
 
             _ => {
-                match eval(&arena, root, &vars) {
+                match evaluate(&arena, root, &vars) {
                     Ok(v) => {
                         if should_print {
                             write!(out, "  = ").ok();
@@ -729,7 +729,7 @@ fn main() {
                             writeln!(out).ok();
                         }
                     }
-                    // eval returns Err — match on the type to distinguish
+                    // evaluate returns Err — match on the type to distinguish
                     // unbound variables (store as pending) from real errors.
                     Err(e) => {
                         match e {

@@ -1,7 +1,7 @@
 use crate::parser::Node;
 use crate::variables::{VARIABLE_STORE_LIMIT, VariableStore, collect_variables};
 
-/// Zero-allocation error type for eval.  Only converted to String at the
+/// Zero-allocation error type for evaluate.  Only converted to String at the
 /// display boundary, so the Newton hot path never heap-allocates on errors.
 #[derive(Debug)]
 pub enum EvaluationError {
@@ -20,61 +20,61 @@ impl EvaluationError {
     }
 }
 
-pub fn eval(arena: &[Node], idx: u32, vars: &VariableStore) -> Result<f64, EvaluationError> {
+pub fn evaluate(arena: &[Node], idx: u32, vars: &VariableStore) -> Result<f64, EvaluationError> {
     match unsafe { arena.get_unchecked(idx as usize) } {
         Node::Number(v) => Ok(*v),
         Node::Constant(v) => Ok(*v),
 
         Node::Variable(_, _, hash) => vars.get(*hash).ok_or(EvaluationError::UnboundVariable),
 
-        // Equation nodes are not evaluated by plain eval; use evaluate_pending.
+        // Equation nodes are not evaluated by plain evaluate; use evaluate_pending.
         Node::Equation(_, _) => Err(EvaluationError::IsEquation),
-        Node::Neg(a) => Ok(-eval(arena, *a, vars)?),
-        Node::Add(a, b) => Ok(eval(arena, *a, vars)? + eval(arena, *b, vars)?),
-        Node::Sub(a, b) => Ok(eval(arena, *a, vars)? - eval(arena, *b, vars)?),
-        Node::Mul(a, b) => Ok(eval(arena, *a, vars)? * eval(arena, *b, vars)?),
-        Node::Div(a, b) => Ok(eval(arena, *a, vars)? / eval(arena, *b, vars)?),
-        Node::Pow(a, b) => Ok(eval(arena, *a, vars)?.powf(eval(arena, *b, vars)?)),
+        Node::Neg(a) => Ok(-evaluate(arena, *a, vars)?),
+        Node::Add(a, b) => Ok(evaluate(arena, *a, vars)? + evaluate(arena, *b, vars)?),
+        Node::Sub(a, b) => Ok(evaluate(arena, *a, vars)? - evaluate(arena, *b, vars)?),
+        Node::Mul(a, b) => Ok(evaluate(arena, *a, vars)? * evaluate(arena, *b, vars)?),
+        Node::Div(a, b) => Ok(evaluate(arena, *a, vars)? / evaluate(arena, *b, vars)?),
+        Node::Pow(a, b) => Ok(evaluate(arena, *a, vars)?.powf(evaluate(arena, *b, vars)?)),
 
-        Node::Sin(a) => Ok(eval(arena, *a, vars)?.sin()),
-        Node::Cos(a) => Ok(eval(arena, *a, vars)?.cos()),
-        Node::Tan(a) => Ok(eval(arena, *a, vars)?.tan()),
+        Node::Sin(a) => Ok(evaluate(arena, *a, vars)?.sin()),
+        Node::Cos(a) => Ok(evaluate(arena, *a, vars)?.cos()),
+        Node::Tan(a) => Ok(evaluate(arena, *a, vars)?.tan()),
 
-        Node::Sec(a) => Ok(1.0 / eval(arena, *a, vars)?.cos()),
-        Node::Csc(a) => Ok(1.0 / eval(arena, *a, vars)?.sin()),
+        Node::Sec(a) => Ok(1.0 / evaluate(arena, *a, vars)?.cos()),
+        Node::Csc(a) => Ok(1.0 / evaluate(arena, *a, vars)?.sin()),
         Node::Cot(a) => {
-            let v = eval(arena, *a, vars)?;
+            let v = evaluate(arena, *a, vars)?;
             Ok(v.cos() / v.sin())
         }
 
-        Node::Asin(a) => Ok(eval(arena, *a, vars)?.asin()),
-        Node::Acos(a) => Ok(eval(arena, *a, vars)?.acos()),
-        Node::Atan(a) => Ok(eval(arena, *a, vars)?.atan()),
+        Node::Asin(a) => Ok(evaluate(arena, *a, vars)?.asin()),
+        Node::Acos(a) => Ok(evaluate(arena, *a, vars)?.acos()),
+        Node::Atan(a) => Ok(evaluate(arena, *a, vars)?.atan()),
 
-        Node::Asec(a) => Ok((1.0 / eval(arena, *a, vars)?).acos()),
-        Node::Acsc(a) => Ok((1.0 / eval(arena, *a, vars)?).asin()),
-        Node::Acot(a) => Ok((1.0 / eval(arena, *a, vars)?).atan()),
+        Node::Asec(a) => Ok((1.0 / evaluate(arena, *a, vars)?).acos()),
+        Node::Acsc(a) => Ok((1.0 / evaluate(arena, *a, vars)?).asin()),
+        Node::Acot(a) => Ok((1.0 / evaluate(arena, *a, vars)?).atan()),
 
-        Node::Sinh(a) => Ok(eval(arena, *a, vars)?.sinh()),
-        Node::Cosh(a) => Ok(eval(arena, *a, vars)?.cosh()),
-        Node::Tanh(a) => Ok(eval(arena, *a, vars)?.tanh()),
-        Node::Sech(a) => Ok(1.0 / eval(arena, *a, vars)?.cosh()),
-        Node::Csch(a) => Ok(1.0 / eval(arena, *a, vars)?.sinh()),
+        Node::Sinh(a) => Ok(evaluate(arena, *a, vars)?.sinh()),
+        Node::Cosh(a) => Ok(evaluate(arena, *a, vars)?.cosh()),
+        Node::Tanh(a) => Ok(evaluate(arena, *a, vars)?.tanh()),
+        Node::Sech(a) => Ok(1.0 / evaluate(arena, *a, vars)?.cosh()),
+        Node::Csch(a) => Ok(1.0 / evaluate(arena, *a, vars)?.sinh()),
         Node::Coth(a) => {
-            let v = eval(arena, *a, vars)?;
+            let v = evaluate(arena, *a, vars)?;
             Ok(v.cosh() / v.sinh())
         }
 
-        Node::Asinh(a) => Ok(eval(arena, *a, vars)?.asinh()),
-        Node::Acosh(a) => Ok(eval(arena, *a, vars)?.acosh()),
-        Node::Atanh(a) => Ok(eval(arena, *a, vars)?.atanh()),
-        Node::Asech(a) => Ok((1.0 / eval(arena, *a, vars)?).acosh()),
-        Node::Acsch(a) => Ok((1.0 / eval(arena, *a, vars)?).asinh()),
-        Node::Acoth(a) => Ok((1.0 / eval(arena, *a, vars)?).atanh()),
+        Node::Asinh(a) => Ok(evaluate(arena, *a, vars)?.asinh()),
+        Node::Acosh(a) => Ok(evaluate(arena, *a, vars)?.acosh()),
+        Node::Atanh(a) => Ok(evaluate(arena, *a, vars)?.atanh()),
+        Node::Asech(a) => Ok((1.0 / evaluate(arena, *a, vars)?).acosh()),
+        Node::Acsch(a) => Ok((1.0 / evaluate(arena, *a, vars)?).asinh()),
+        Node::Acoth(a) => Ok((1.0 / evaluate(arena, *a, vars)?).atanh()),
 
-        Node::Ln(a) => Ok(eval(arena, *a, vars)?.ln()),
-        Node::Log(a) => Ok(eval(arena, *a, vars)?.log10()),
-        Node::Sqrt(a) => Ok(eval(arena, *a, vars)?.sqrt()),
+        Node::Ln(a) => Ok(evaluate(arena, *a, vars)?.ln()),
+        Node::Log(a) => Ok(evaluate(arena, *a, vars)?.log10()),
+        Node::Sqrt(a) => Ok(evaluate(arena, *a, vars)?.sqrt()),
     }
 }
 
@@ -103,7 +103,7 @@ pub fn try_simple_assign(
     };
 
     // rhs must be fully evaluable right now
-    let value = eval(arena, rhs, vars).map_err(|e| e.to_string_msg())?;
+    let value = evaluate(arena, rhs, vars).map_err(|e| e.to_string_msg())?;
     vars.set(var_hash, value)?;
     Ok(Some((var_start, var_end, value)))
 }
@@ -144,7 +144,7 @@ pub fn evaluate_pending(
     let (lhs_idx, rhs_idx) = match &arena[root as usize] {
         Node::Equation(l, r) => (*l, *r),
         _ => {
-            let v = eval(arena, root, vars).map_err(|e| e.to_string_msg())?;
+            let v = evaluate(arena, root, vars).map_err(|e| e.to_string_msg())?;
             return Ok(EvaluationResult::Value(v));
         }
     };
@@ -161,8 +161,8 @@ pub fn evaluate_pending(
     match free.len() {
         0 => {
             // All bound — evaluate both sides.
-            let lhs_val = eval(arena, lhs_idx, vars).map_err(|e| e.to_string_msg())?;
-            let rhs_val = eval(arena, rhs_idx, vars).map_err(|e| e.to_string_msg())?;
+            let lhs_val = evaluate(arena, lhs_idx, vars).map_err(|e| e.to_string_msg())?;
+            let rhs_val = evaluate(arena, rhs_idx, vars).map_err(|e| e.to_string_msg())?;
             Ok(EvaluationResult::Verified {
                 lhs: lhs_val,
                 rhs: rhs_val,
@@ -181,8 +181,8 @@ pub fn evaluate_pending(
             let mut probe = vars.clone_for_probe(unknown_hash);
             let mut f = |x: f64| -> Result<f64, String> {
                 probe.set_last(x);
-                let l = eval(arena, lhs_idx, &probe).map_err(|e| e.to_string_msg())?;
-                let r = eval(arena, rhs_idx, &probe).map_err(|e| e.to_string_msg())?;
+                let l = evaluate(arena, lhs_idx, &probe).map_err(|e| e.to_string_msg())?;
+                let r = evaluate(arena, rhs_idx, &probe).map_err(|e| e.to_string_msg())?;
                 Ok(l - r)
             };
 
@@ -276,7 +276,7 @@ mod tests {
         let vars = VariableStore::new();
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
-        eval(&arena, root, &vars).unwrap()
+        evaluate(&arena, root, &vars).unwrap()
     }
 
     #[test]
@@ -377,12 +377,12 @@ mod tests {
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
         try_simple_assign(&arena, root, &mut vars).unwrap();
-        // Eval x*x
+        // evaluate x*x
         arena.clear();
         let src2 = "x*x";
         Tokenizer::new(src2).tokenize(&mut tokens).unwrap();
         let root2 = Parser::new(&tokens, src2, &mut arena).parse().unwrap();
-        assert!((eval(&arena, root2, &vars).unwrap() - 9.0).abs() < 1e-10);
+        assert!((evaluate(&arena, root2, &vars).unwrap() - 9.0).abs() < 1e-10);
     }
 
     #[test]
