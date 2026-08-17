@@ -1,5 +1,5 @@
 use crate::parser::Node;
-use crate::vars::{VARIABLE_STORE_LIMIT, VariableStore, collect_vars};
+use crate::variables::{VARIABLE_STORE_LIMIT, VariableStore, collect_variables};
 
 /// Zero-allocation error type for eval.  Only converted to String at the
 /// display boundary, so the Newton hot path never heap-allocates on errors.
@@ -150,7 +150,7 @@ pub fn evaluate_pending(
     };
 
     // Collect free variables (unbound in VariableStore).
-    let mut free = collect_vars(arena, root);
+    let mut free = collect_variables(arena, root);
     if free.overflowed() {
         return Err(format!(
             "cannot evaluate: variable limit ({VARIABLE_STORE_LIMIT}) exceeded"

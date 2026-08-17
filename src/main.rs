@@ -7,7 +7,7 @@ use expression::eval::{
 use expression::lexer::{Token, Tokenizer};
 use expression::parser::{Node, Parser};
 use expression::simplify::simplify;
-use expression::vars::{VariableStore, collect_vars};
+use expression::variables::{VariableStore, collect_variables};
 
 use zmij::Buffer as DtoaBuffer;
 
@@ -348,7 +348,7 @@ struct Pending {
 impl Pending {
     /// Return the names of variables in this equation that are still unbound.
     fn free_var_names<'a>(&'a self, vars: &VariableStore) -> Vec<&'a str> {
-        collect_vars(&self.arena, self.root)
+        collect_variables(&self.arena, self.root)
             .iter()
             .filter(|(h, _, _)| vars.get(*h).is_none())
             .map(|(_, s, e)| &self.src[*s as usize..*e as usize])
@@ -691,7 +691,7 @@ fn main() {
                         if should_print {
                             // Only collect vars for display; skip the allocation in non-interactive mode.
                             let all_vars =
-                                collect_vars(pending.as_ref().unwrap().arena.as_slice(), root);
+                                collect_variables(pending.as_ref().unwrap().arena.as_slice(), root);
                             let free: Vec<&str> = all_vars
                                 .iter()
                                 .filter(|(h, _, _)| vars.get(*h).is_none())
@@ -740,7 +740,7 @@ fn main() {
                                             .ok();
                                     }
                                     // Only collect names for display.
-                                    let all_vars = collect_vars(&arena, root);
+                                    let all_vars = collect_variables(&arena, root);
                                     let free: Vec<&str> = all_vars
                                         .iter()
                                         .filter(|(h, _, _)| vars.get(*h).is_none())

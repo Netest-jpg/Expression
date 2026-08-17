@@ -168,7 +168,7 @@ impl std::ops::Index<usize> for VarList {
     }
 }
 
-pub fn collect_vars(arena: &[Node], root: u32) -> VarList {
+pub fn collect_variables(arena: &[Node], root: u32) -> VarList {
     let mut out = VarList::new();
     collect_vars_inner(arena, root, &mut out);
     out

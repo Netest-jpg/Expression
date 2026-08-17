@@ -3,7 +3,7 @@ use expression::eval::{evaluate_pending, try_simple_assign};
 use expression::lexer::Tokenizer;
 use expression::parser::{Node, Parser};
 use expression::simplify::simplify;
-use expression::vars::{VariableStore, collect_vars};
+use expression::variables::{VariableStore, collect_variables};
 
 fn bench_full_pipeline(c: &mut Criterion) {
     let src = "sin(x)^2 + cos(x)^2 + sqrt(9) * ln(e)";
@@ -74,9 +74,9 @@ fn bench_collect_vars(c: &mut Criterion) {
     let mut arena = Vec::new();
     Tokenizer::new(src).tokenize(&mut tokens).unwrap();
     let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
-    c.bench_function("collect_vars", |b| {
+    c.bench_function("collect_variables", |b| {
         b.iter(|| {
-            let vars = collect_vars(&arena, root);
+            let vars = collect_variables(&arena, root);
             black_box(vars.len());
         });
     });
