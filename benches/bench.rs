@@ -3,7 +3,7 @@ use expression::eval::{evaluate_pending, try_simple_assign};
 use expression::lexer::Tokenizer;
 use expression::parser::{Node, Parser};
 use expression::simplify::simplify;
-use expression::vars::{VarStore, collect_vars};
+use expression::vars::{VariableStore, collect_vars};
 
 fn bench_full_pipeline(c: &mut Criterion) {
     let src = "sin(x)^2 + cos(x)^2 + sqrt(9) * ln(e)";
@@ -42,7 +42,7 @@ fn bench_assignment(c: &mut Criterion) {
     let mut arena = Vec::new();
     Tokenizer::new(src).tokenize(&mut tokens).unwrap();
     c.bench_function("assignment", |b| {
-        let mut vars = VarStore::new();
+        let mut vars = VariableStore::new();
         b.iter(|| {
             vars.clear();
             arena.clear();
@@ -57,7 +57,7 @@ fn bench_pending_solve(c: &mut Criterion) {
     let src = "x+2=5";
     let mut tokens = Vec::new();
     let mut arena = Vec::new();
-    let vars = VarStore::new();
+    let vars = VariableStore::new();
     Tokenizer::new(src).tokenize(&mut tokens).unwrap();
     let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
     c.bench_function("pending solve", |b| {

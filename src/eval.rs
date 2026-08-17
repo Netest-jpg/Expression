@@ -1,34 +1,34 @@
 use crate::parser::Node;
-use crate::vars::{VAR_STORE_LIMIT, VarStore, collect_vars};
+use crate::vars::{VARIABLE_STORE_LIMIT, VariableStore, collect_vars};
 
 /// Zero-allocation error type for eval.  Only converted to String at the
 /// display boundary, so the Newton hot path never heap-allocates on errors.
 #[derive(Debug)]
-pub enum EvalError {
-    /// A variable was looked up but had no binding in VarStore.
+pub enum EvaluationError {
+    /// A variable was looked up but had no binding in VariableStore.
     UnboundVariable,
     /// The root node is an Equation — use evaluate_pending instead.
     IsEquation,
 }
 
-impl EvalError {
+impl EvaluationError {
     pub fn to_string_msg(&self) -> String {
         match self {
-            EvalError::UnboundVariable => "unbound variable".to_string(),
-            EvalError::IsEquation => "use 'evaluate' to evaluate an equation".to_string(),
+            EvaluationError::UnboundVariable => "unbound variable".to_string(),
+            EvaluationError::IsEquation => "use 'evaluate' to evaluate an equation".to_string(),
         }
     }
 }
 
-pub fn eval(arena: &[Node], idx: u32, vars: &VarStore) -> Result<f64, EvalError> {
+pub fn eval(arena: &[Node], idx: u32, vars: &VariableStore) -> Result<f64, EvaluationError> {
     match unsafe { arena.get_unchecked(idx as usize) } {
         Node::Number(v) => Ok(*v),
         Node::Constant(v) => Ok(*v),
 
-        Node::Variable(_, _, hash) => vars.get(*hash).ok_or(EvalError::UnboundVariable),
+        Node::Variable(_, _, hash) => vars.get(*hash).ok_or(EvaluationError::UnboundVariable),
 
         // Equation nodes are not evaluated by plain eval; use evaluate_pending.
-        Node::Equation(_, _) => Err(EvalError::IsEquation),
+        Node::Equation(_, _) => Err(EvaluationError::IsEquation),
         Node::Neg(a) => Ok(-eval(arena, *a, vars)?),
         Node::Add(a, b) => Ok(eval(arena, *a, vars)? + eval(arena, *b, vars)?),
         Node::Sub(a, b) => Ok(eval(arena, *a, vars)? - eval(arena, *b, vars)?),
@@ -89,7 +89,7 @@ pub fn eval(arena: &[Node], idx: u32, vars: &VarStore) -> Result<f64, EvalError>
 pub fn try_simple_assign(
     arena: &[Node],
     root: u32,
-    vars: &mut VarStore,
+    vars: &mut VariableStore,
 ) -> Result<Option<(u32, u32, f64)>, String> {
     let Node::Equation(lhs, rhs) = &arena[root as usize] else {
         return Ok(None); // not an equation at all
@@ -109,7 +109,7 @@ pub fn try_simple_assign(
 }
 
 // -----------------------------------------------------------------------
-// Evaluate a pending equation against the VarStore.
+// Evaluate a pending equation against the VariableStore.
 //
 // The root must be an Equation node.  Three cases:
 //
@@ -119,7 +119,7 @@ pub fn try_simple_assign(
 //   • >1 free vars → return Err listing which vars still need values.
 // -----------------------------------------------------------------------
 
-pub enum EvalResult {
+pub enum EvaluationResult {
     /// All vars bound: lhs value and rhs value (should be equal for an equation).
     Verified { lhs: f64, rhs: f64 },
     /// One free var solved numerically.
@@ -137,23 +137,23 @@ pub enum EvalResult {
 pub fn evaluate_pending(
     arena: &[Node],
     root: u32,
-    vars: &VarStore,
+    vars: &VariableStore,
     src: &str,
-) -> Result<EvalResult, String> {
+) -> Result<EvaluationResult, String> {
     // Plain expression (no Equation node at root)
     let (lhs_idx, rhs_idx) = match &arena[root as usize] {
         Node::Equation(l, r) => (*l, *r),
         _ => {
             let v = eval(arena, root, vars).map_err(|e| e.to_string_msg())?;
-            return Ok(EvalResult::Value(v));
+            return Ok(EvaluationResult::Value(v));
         }
     };
 
-    // Collect free variables (unbound in VarStore).
+    // Collect free variables (unbound in VariableStore).
     let mut free = collect_vars(arena, root);
     if free.overflowed() {
         return Err(format!(
-            "cannot evaluate: variable limit ({VAR_STORE_LIMIT}) exceeded"
+            "cannot evaluate: variable limit ({VARIABLE_STORE_LIMIT}) exceeded"
         ));
     }
     free.retain(|(hash, _, _)| vars.get(*hash).is_none());
@@ -163,7 +163,7 @@ pub fn evaluate_pending(
             // All bound — evaluate both sides.
             let lhs_val = eval(arena, lhs_idx, vars).map_err(|e| e.to_string_msg())?;
             let rhs_val = eval(arena, rhs_idx, vars).map_err(|e| e.to_string_msg())?;
-            Ok(EvalResult::Verified {
+            Ok(EvaluationResult::Verified {
                 lhs: lhs_val,
                 rhs: rhs_val,
             })
@@ -175,7 +175,7 @@ pub fn evaluate_pending(
 
             // f(x) = lhs(x) - rhs(x); we want f(x) = 0.
             //
-            // Build a probe VarStore once (one clone of entries + one push),
+            // Build a probe VariableStore once (one clone of entries + one push),
             // then update only the unknown's slot each Newton step via set_last.
             // Zero heap allocations inside the Newton loop.
             let mut probe = vars.clone_for_probe(unknown_hash);
@@ -208,7 +208,7 @@ pub fn evaluate_pending(
                 ([solution, 0.0], 1u8)
             };
 
-            Ok(EvalResult::Solved {
+            Ok(EvaluationResult::Solved {
                 name,
                 values,
                 count,
@@ -273,7 +273,7 @@ mod tests {
     fn parse_and_eval(src: &str) -> f64 {
         let mut tokens = Vec::new();
         let mut arena = Vec::new();
-        let vars = VarStore::new();
+        let vars = VariableStore::new();
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
         eval(&arena, root, &vars).unwrap()
@@ -356,7 +356,7 @@ mod tests {
     fn test_simple_assign() {
         let mut tokens = Vec::new();
         let mut arena = Vec::new();
-        let mut vars = VarStore::new();
+        let mut vars = VariableStore::new();
         let src = "x=42";
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
@@ -371,7 +371,7 @@ mod tests {
     fn test_assign_then_use() {
         let mut tokens = Vec::new();
         let mut arena = Vec::new();
-        let mut vars = VarStore::new();
+        let mut vars = VariableStore::new();
         // Assign x=3
         let src = "x=3";
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
@@ -390,12 +390,12 @@ mod tests {
         // x+2=5  →  x=3
         let mut tokens = Vec::new();
         let mut arena = Vec::new();
-        let vars = VarStore::new();
+        let vars = VariableStore::new();
         let src = "x+2=5";
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
         let result = evaluate_pending(&arena, root, &vars, src).unwrap();
-        if let EvalResult::Solved { name, values, .. } = result {
+        if let EvaluationResult::Solved { name, values, .. } = result {
             assert_eq!(name, "x");
             assert!((values[0] - 3.0).abs() < 1e-8);
         } else {
@@ -408,12 +408,12 @@ mod tests {
         // x^2=9  →  x=3 or x=-3 (Newton from x0=1 → 3)
         let mut tokens = Vec::new();
         let mut arena = Vec::new();
-        let vars = VarStore::new();
+        let vars = VariableStore::new();
         let src = "x^2=9";
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
         let result = evaluate_pending(&arena, root, &vars, src).unwrap();
-        if let EvalResult::Solved { values, count, .. } = result {
+        if let EvaluationResult::Solved { values, count, .. } = result {
             assert_eq!(count, 2, "expected two roots for x^2=9");
             for i in 0..count as usize {
                 assert!(
@@ -432,7 +432,7 @@ mod tests {
     fn test_too_many_free_vars_error() {
         let mut tokens = Vec::new();
         let mut arena = Vec::new();
-        let vars = VarStore::new();
+        let vars = VariableStore::new();
         let src = "x+y=5";
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
@@ -441,13 +441,13 @@ mod tests {
 
     #[test]
     fn test_varstore_limit() {
-        let mut vars = VarStore::new();
-        // Fill all VAR_STORE_LIMIT slots with distinct hashes.
-        for i in 0..VAR_STORE_LIMIT {
+        let mut vars = VariableStore::new();
+        // Fill all VARIABLE_STORE_LIMIT slots with distinct hashes.
+        for i in 0..VARIABLE_STORE_LIMIT {
             vars.set(i as u64 + 1, i as f64).unwrap(); // hash 0 is the zero-init sentinel; use 1..=64
         }
         // One more new key must be rejected.
-        assert!(vars.set(VAR_STORE_LIMIT as u64 + 1, 1.0).is_err());
+        assert!(vars.set(VARIABLE_STORE_LIMIT as u64 + 1, 1.0).is_err());
         // Updating an existing key is always ok.
         vars.set(1u64, 99.0).unwrap();
     }

@@ -1,16 +1,16 @@
 use crate::parser::Node;
 
-pub const VAR_STORE_LIMIT: usize = 64;
+pub const VARIABLE_STORE_LIMIT: usize = 64;
 
-pub struct VarStore {
-    entries: [(u64, f64); VAR_STORE_LIMIT], // fixed stack/inline array — no heap
+pub struct VariableStore {
+    entries: [(u64, f64); VARIABLE_STORE_LIMIT], // fixed stack/inline array — no heap
     len: usize,
 }
 
-impl VarStore {
+impl VariableStore {
     pub fn new() -> Self {
-        VarStore {
-            entries: [(0u64, 0.0f64); VAR_STORE_LIMIT],
+        VariableStore {
+            entries: [(0u64, 0.0f64); VARIABLE_STORE_LIMIT],
             len: 0,
         }
     }
@@ -33,9 +33,9 @@ impl VarStore {
             entry.1 = value;
             return Ok(());
         }
-        if self.len >= VAR_STORE_LIMIT {
+        if self.len >= VARIABLE_STORE_LIMIT {
             return Err(format!(
-                "variable limit ({VAR_STORE_LIMIT}) reached; clear some variables first"
+                "variable limit ({VARIABLE_STORE_LIMIT}) reached; clear some variables first"
             ));
         }
         self.entries[self.len] = (hash, value);
@@ -52,8 +52,8 @@ impl VarStore {
     /// The unknown's value is left as 0.0; call `set_last` to update it.
     /// Used by the Newton solver: one stack copy before the loop, then
     /// `set_last` updates the single f64 each iteration — zero heap allocs.
-    pub fn clone_for_probe(&self, hash: u64) -> VarStore {
-        let mut probe = VarStore {
+    pub fn clone_for_probe(&self, hash: u64) -> VariableStore {
+        let mut probe = VariableStore {
             entries: self.entries,
             len: self.len,
         };
@@ -65,7 +65,7 @@ impl VarStore {
         {
             e.1 = 0.0;
         } else {
-            // len < VAR_STORE_LIMIT is guaranteed: the free var is unbound,
+            // len < VARIABLE_STORE_LIMIT is guaranteed: the free var is unbound,
             // so it cannot already occupy one of the len filled slots.
             probe.entries[probe.len] = (hash, 0.0);
             probe.len += 1;
@@ -81,7 +81,7 @@ impl VarStore {
     }
 }
 
-impl Default for VarStore {
+impl Default for VariableStore {
     fn default() -> Self {
         Self::new()
     }
@@ -92,7 +92,7 @@ impl Default for VarStore {
 // Returns a fixed-size stack/inline list deduplicated by hash.
 // -----------------------------------------------------------------------
 pub struct VarList {
-    entries: [(u64, u32, u32); VAR_STORE_LIMIT],
+    entries: [(u64, u32, u32); VARIABLE_STORE_LIMIT],
     len: usize,
     overflowed: bool,
 }
@@ -100,7 +100,7 @@ pub struct VarList {
 impl VarList {
     pub fn new() -> Self {
         VarList {
-            entries: [(0, 0, 0); VAR_STORE_LIMIT],
+            entries: [(0, 0, 0); VARIABLE_STORE_LIMIT],
             len: 0,
             overflowed: false,
         }
@@ -144,7 +144,7 @@ impl VarList {
         if self.iter().any(|(h, _, _)| *h == hash) {
             return;
         }
-        if self.len < VAR_STORE_LIMIT {
+        if self.len < VARIABLE_STORE_LIMIT {
             self.entries[self.len] = (hash, start, end);
             self.len += 1;
         } else {

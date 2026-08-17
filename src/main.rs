@@ -1,11 +1,13 @@
 use std::io::IsTerminal;
 use std::io::{BufRead, BufWriter, Write};
 
-use expression::eval::{EvalError, EvalResult, eval, evaluate_pending, try_simple_assign};
+use expression::eval::{
+    EvaluationError, EvaluationResult, eval, evaluate_pending, try_simple_assign,
+};
 use expression::lexer::{Token, Tokenizer};
 use expression::parser::{Node, Parser};
 use expression::simplify::simplify;
-use expression::vars::{VarStore, collect_vars};
+use expression::vars::{VariableStore, collect_vars};
 
 use zmij::Buffer as DtoaBuffer;
 
@@ -345,7 +347,7 @@ struct Pending {
 
 impl Pending {
     /// Return the names of variables in this equation that are still unbound.
-    fn free_var_names<'a>(&'a self, vars: &VarStore) -> Vec<&'a str> {
+    fn free_var_names<'a>(&'a self, vars: &VariableStore) -> Vec<&'a str> {
         collect_vars(&self.arena, self.root)
             .iter()
             .filter(|(h, _, _)| vars.get(*h).is_none())
@@ -354,7 +356,7 @@ impl Pending {
     }
 
     /// Print the current state of this pending equation relative to vars.
-    fn print_status<W: Write>(&self, out: &mut W, vars: &VarStore) {
+    fn print_status<W: Write>(&self, out: &mut W, vars: &VariableStore) {
         let free = self.free_var_names(vars);
         if free.is_empty() {
             writeln!(
@@ -411,7 +413,7 @@ fn main() {
     let mut line = String::with_capacity(64);
     let mut tokens: Vec<Token> = Vec::with_capacity(32);
     let mut arena: Vec<Node> = Vec::with_capacity(32);
-    let mut vars = VarStore::new();
+    let mut vars = VariableStore::new();
     let mut pending: Option<Pending> = None;
     // Hoisted buffer: reused for Pending.src each iteration instead of
     // calling expression.to_string() which allocates a fresh String every time.
@@ -473,12 +475,12 @@ fn main() {
                     Ok(result) => {
                         if should_print {
                             match result {
-                                EvalResult::Value(v) => {
+                                EvaluationResult::Value(v) => {
                                     write!(out, "  = ").ok();
                                     write_value(&mut out, v).ok();
                                     writeln!(out).ok();
                                 }
-                                EvalResult::Verified { lhs, rhs } => {
+                                EvaluationResult::Verified { lhs, rhs } => {
                                     if (lhs - rhs).abs() < 1e-9 {
                                         write!(out, "  ✓  ").ok();
                                         write_value(&mut out, lhs).ok();
@@ -493,7 +495,7 @@ fn main() {
                                         writeln!(out, "  (false)").ok();
                                     }
                                 }
-                                EvalResult::Solved {
+                                EvaluationResult::Solved {
                                     name,
                                     values,
                                     count,
@@ -643,7 +645,7 @@ fn main() {
                     }
 
                     Ok(Some((start, end, value))) => {
-                        // x = <number>: stored in VarStore.
+                        // x = <number>: stored in VariableStore.
                         // Then show how this affects the pending equation.
                         if should_print {
                             let name = &expression[start as usize..end as usize];
@@ -731,7 +733,7 @@ fn main() {
                     // unbound variables (store as pending) from real errors.
                     Err(e) => {
                         match e {
-                            EvalError::UnboundVariable => {
+                            EvaluationError::UnboundVariable => {
                                 if should_print {
                                     if let Some(prev) = &pending {
                                         writeln!(out, "  (replacing pending: \"{}\")", prev.src)
