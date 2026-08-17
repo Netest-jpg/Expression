@@ -1,5 +1,5 @@
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
-use expression::eval::{evaluate_pending, try_simple_assign};
+use expression::evaluation::{evaluate_pending, try_simple_assign};
 use expression::lexer::Tokenizer;
 use expression::parser::{Node, Parser};
 use expression::simplify::simplify;

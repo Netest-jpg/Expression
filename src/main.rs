@@ -1,7 +1,7 @@
 use std::io::IsTerminal;
 use std::io::{BufRead, BufWriter, Write};
 
-use expression::eval::{
+use expression::evaluation::{
     EvaluationError, EvaluationResult, eval, evaluate_pending, try_simple_assign,
 };
 use expression::lexer::{Token, Tokenizer};
