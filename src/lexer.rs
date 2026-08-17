@@ -111,9 +111,9 @@ enum Dispatch {
     Alpha,
     Plus,
     Minus,
-    Star,
-    Slash,
-    Caret,
+    Multiply,
+    Divide,
+    Exponent,
     LParen,
     RParen,
     Equals,
@@ -154,9 +154,9 @@ const fn build_dispatch_table() -> [Dispatch; 256] {
     t[b'_' as usize] = Dispatch::Alpha;
     t[b'+' as usize] = Dispatch::Plus;
     t[b'-' as usize] = Dispatch::Minus;
-    t[b'*' as usize] = Dispatch::Star;
-    t[b'/' as usize] = Dispatch::Slash;
-    t[b'^' as usize] = Dispatch::Caret;
+    t[b'*' as usize] = Dispatch::Multiply;
+    t[b'/' as usize] = Dispatch::Divide;
+    t[b'^' as usize] = Dispatch::Exponent;
     t[b'(' as usize] = Dispatch::LParen;
     t[b')' as usize] = Dispatch::RParen;
     t[b'=' as usize] = Dispatch::Equals;
@@ -186,9 +186,9 @@ pub enum Token {
     },
     Plus,
     Minus,
-    Asterisk,
-    ForwardSlash,
-    Caret,
+    Multiply,
+    Divide,
+    Exponent,
     LeftParenthesis,
     RightParenthesis,
     Equals,
@@ -238,9 +238,9 @@ impl std::fmt::Debug for Token {
             Token::Identifier { start, end, .. } => write!(f, "Identifier([{start}..{end}])"),
             Token::Plus => write!(f, "Plus"),
             Token::Minus => write!(f, "Minus"),
-            Token::Asterisk => write!(f, "Asterisk"),
-            Token::ForwardSlash => write!(f, "ForwardSlash"),
-            Token::Caret => write!(f, "Caret"),
+            Token::Multiply => write!(f, "Multiply"),
+            Token::Divide => write!(f, "Divide"),
+            Token::Exponent => write!(f, "Exponent"),
             Token::LeftParenthesis => write!(f, "LeftParenthesis"),
             Token::RightParenthesis => write!(f, "RightParenthesis"),
             Token::Equals => write!(f, "Equals"),
@@ -292,7 +292,7 @@ impl<'src> Tokenizer<'src> {
                     let implicit = self.current().is_some_and(is_ident_char);
                     tokens.push(tok);
                     if implicit {
-                        tokens.push(Token::Asterisk);
+                        tokens.push(Token::Multiply);
                     }
                 }
 
@@ -308,17 +308,17 @@ impl<'src> Tokenizer<'src> {
                     self.advance();
                     tokens.push(Token::Minus);
                 }
-                Dispatch::Star => {
+                Dispatch::Multiply => {
                     self.advance();
-                    tokens.push(Token::Asterisk);
+                    tokens.push(Token::Multiply);
                 }
-                Dispatch::Slash => {
+                Dispatch::Divide => {
                     self.advance();
-                    tokens.push(Token::ForwardSlash);
+                    tokens.push(Token::Divide);
                 }
-                Dispatch::Caret => {
+                Dispatch::Exponent => {
                     self.advance();
-                    tokens.push(Token::Caret);
+                    tokens.push(Token::Exponent);
                 }
                 Dispatch::LParen => {
                     self.advance();
@@ -436,9 +436,9 @@ mod tests {
         let (tokens, _) = tok("+ - * / ^ ( )");
         assert!(matches!(tokens[0], Token::Plus));
         assert!(matches!(tokens[1], Token::Minus));
-        assert!(matches!(tokens[2], Token::Asterisk));
-        assert!(matches!(tokens[3], Token::ForwardSlash));
-        assert!(matches!(tokens[4], Token::Caret));
+        assert!(matches!(tokens[2], Token::Multiply));
+        assert!(matches!(tokens[3], Token::Divide));
+        assert!(matches!(tokens[4], Token::Exponent));
         assert!(matches!(tokens[5], Token::LeftParenthesis));
         assert!(matches!(tokens[6], Token::RightParenthesis));
     }
@@ -480,7 +480,7 @@ mod tests {
     fn test_implicit_multiply() {
         let (tokens, _) = tok("2x");
         assert!(matches!(tokens[0], Token::Number { .. }));
-        assert!(matches!(tokens[1], Token::Asterisk));
+        assert!(matches!(tokens[1], Token::Multiply));
         assert!(matches!(tokens[2], Token::Identifier { .. }));
     }
 

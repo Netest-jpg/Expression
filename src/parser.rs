@@ -7,54 +7,58 @@ use crate::lexer::{
 use fast_float2 as fast_float;
 
 #[repr(u8)]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum TokenKind {
     Number = 0,
     Ident = 1,
     Plus = 2,
     Minus = 3,
-    Asterisk = 4,
-    Slash = 5,
-    Caret = 6,
+    Multiply = 4,
+    Divide = 5,
+    Exponent = 6,
     LParen = 7,
     RParen = 8,
-    Eof = 9,
+    EOF = 9,
     Equals = 10,
     _Count = 11,
 }
 
-/// The left-binding power (LBP) of each token kind.
+/// The left-binding power (LBP) of each TokenKind.
 static LBP: [u8; TokenKind::_Count as usize] = {
     let mut t = [0u8; TokenKind::_Count as usize];
     t[TokenKind::Equals as usize] = 5; // lowest infix; right-assoc: rbp = 4
     t[TokenKind::Plus as usize] = 10;
     t[TokenKind::Minus as usize] = 10;
-    t[TokenKind::Asterisk as usize] = 20;
-    t[TokenKind::Slash as usize] = 20;
+    t[TokenKind::Multiply as usize] = 20;
+    t[TokenKind::Divide as usize] = 20;
     t[TokenKind::LParen as usize] = 20; // implicit multiply: x(0) -> x*(0)
-    t[TokenKind::Caret as usize] = 30; // right-assoc: rbp = 29
+    t[TokenKind::Exponent as usize] = 30; // right-assoc: rbp = 29
     t
 };
 
-/// Converts a [`Token`] to a [`TokenKind`].
+/// Converts a [`Token`] to a [`TokenKind`].\
+/// # Example:
+/// ```rust
+/// assert_eq!(kind_of(&Token::Plus ), TokenKind::Plus);
+/// ```
 #[inline(always)]
-fn kind_of(tok: &Token) -> TokenKind {
-    match tok {
+fn kind_of(token: &Token) -> TokenKind {
+    match token {
         Token::Number { .. } => TokenKind::Number,
         Token::Identifier { .. } => TokenKind::Ident,
         Token::Plus => TokenKind::Plus,
         Token::Minus => TokenKind::Minus,
-        Token::Asterisk => TokenKind::Asterisk,
-        Token::ForwardSlash => TokenKind::Slash,
-        Token::Caret => TokenKind::Caret,
+        Token::Multiply => TokenKind::Multiply,
+        Token::Divide => TokenKind::Divide,
+        Token::Exponent => TokenKind::Exponent,
         Token::LeftParenthesis => TokenKind::LParen,
         Token::RightParenthesis => TokenKind::RParen,
         Token::Equals => TokenKind::Equals,
-        Token::EndOfFile => TokenKind::Eof,
+        Token::EndOfFile => TokenKind::EOF,
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Node {
     Number(f64),
     Constant(f64),
@@ -107,10 +111,19 @@ pub enum Node {
     Equation(u32, u32),
 }
 
-// A single match over compile-time-constant u64s compiles to an efficient
-// jump table / binary search — one dispatch instead of two linear chains.
-// Only called when an identifier is immediately followed by '(', so this
-// never runs for plain variables, numbers, or operators.
+/// Resolves a function hash to its corresponding [`Node`].
+///
+/// The supplied `arg` is stored in the resulting [`Node`].\
+/// Returns `None` if the supplied `hash` doesn't match any of the supported functions' hash.
+///
+/// # Examples
+///
+/// ```rust
+/// let node = known_function_kind(KW_SIN, 30);
+///
+/// assert_eq!(node, Some(Node::Sin(30)));
+/// assert_eq!(known_function_kind(0, 30), None);
+/// ```
 #[inline(always)]
 fn known_function_kind(hash: u64, arg: u32) -> Option<Node> {
     Some(match hash {
@@ -148,21 +161,44 @@ fn known_function_kind(hash: u64, arg: u32) -> Option<Node> {
 pub struct Parser<'src, 'arena> {
     tokens: &'src [Token],
     src: &'src str,
-    pos: usize,
+    position: usize,
     arena: &'arena mut Vec<Node>,
 }
 
 impl<'src, 'arena> Parser<'src, 'arena> {
+    /// Creates a parser over `tokens` and `src`, using `arena` to store the parsed nodes.\
+    /// The parser starts at index 0 of the `tokens` array.
+    /// # Arguments
+    ///
+    /// * `tokens` - The tokens to parse.
+    /// * `src` - The original source text from which `tokens` was produced.
+    /// * `arena` - A mutable vector used to store the parsed nodes.
     pub fn new(tokens: &'src [Token], src: &'src str, arena: &'arena mut Vec<Node>) -> Self {
         Parser {
             tokens,
             src,
-            pos: 0,
+            position: 0,
             arena,
         }
     }
 
-    pub fn parse_expr(&mut self, rbp: u8) -> Result<u32, String> {
+    /// Parse the entire expression, returning the root node.
+    pub fn parse(mut self) -> Result<u32, String> {
+        let root = self.pratt_parse(0)?;
+        if self.peek_kind() != TokenKind::EOF {
+            return Err(format!("unexpected trailing token: {:?}", self.peek()));
+        }
+        Ok(root)
+    }
+
+    /// Parses an expression using Pratt parsing with the supplied right-binding power (rbp).
+    ///
+    /// Parses the initial expression with [`Self::nud`], then repeatedly consumes
+    /// infix operators whose left-binding power is greater than `rbp`, combining
+    /// each operator and its right-hand operand with [`Self::led`].
+    ///
+    /// A lower `rbp` allows operators with lower precedence to be consumed.
+    fn pratt_parse(&mut self, rbp: u8) -> Result<u32, String> {
         let mut left = self.nud()?;
         loop {
             let lbp = unsafe { *LBP.get_unchecked(self.peek_kind() as usize) };
@@ -174,43 +210,34 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         Ok(left)
     }
 
-    /// Parse the entire expression, returning the root node.
-    pub fn parse(mut self) -> Result<u32, String> {
-        let root = self.parse_expr(0)?;
-        if self.peek_kind() != TokenKind::Eof {
-            return Err(format!("unexpected trailing token: {:?}", self.peek()));
-        }
-        Ok(root)
-    }
-
     #[inline(always)]
     fn push(&mut self, node: Node) -> u32 {
-        let idx = self.arena.len() as u32;
+        let index = self.arena.len() as u32;
         self.arena.push(node);
-        idx
+        index
     }
 
     #[inline(always)]
     fn peek(&self) -> &Token {
-        unsafe { self.tokens.get_unchecked(self.pos) }
+        unsafe { self.tokens.get_unchecked(self.position) }
     }
 
     /// Peek at the kind of the current token.
     #[inline(always)]
     fn peek_kind(&self) -> TokenKind {
-        kind_of(unsafe { self.tokens.get_unchecked(self.pos) })
+        kind_of(unsafe { self.tokens.get_unchecked(self.position) })
     }
 
     #[inline(always)]
     fn advance(&mut self) -> Token {
-        let tok = unsafe { self.tokens.get_unchecked(self.pos) }.clone();
-        self.pos += 1;
-        tok
+        let token = unsafe { self.tokens.get_unchecked(self.position) }.clone();
+        self.position += 1;
+        token
     }
 
     #[inline(always)]
     fn skip(&mut self) {
-        self.pos += 1;
+        self.position += 1;
     }
 
     /// Expect the current token to be an rparen, and skip it if it is.
@@ -223,16 +250,35 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         Ok(())
     }
 
-    /// Parse a number or identifier token as the NUD (null denotation) of an expression.
+    /// Parses a token in null-denotation (NUD) position.
+    ///
+    /// In Pratt parsing, NUD handles tokens that appear at the beginning of an
+    /// expression, such as literals, identifiers, prefix operators, and
+    /// parenthesized expressions. It consumes the token and returns the index of
+    /// the resulting node in the arena.
+    ///
+    /// # Examples
+    ///
+    /// ```text
+    /// 42       → Node::Number(42)
+    /// pi       → Node::Constant(π)
+    /// x        → Node::Variable(...)
+    /// -x       → Node::Neg(...)
+    /// (x + 1)  → Node::Add(...)
+    /// sin(x)   → Node::Sin(...)
+    /// ```
+    ///
+    /// Unknown identifiers followed by `(` are treated as implicit
+    /// multiplication, so `x(2)` becomes `x * 2`.
     #[inline(always)]
     fn nud(&mut self) -> Result<u32, String> {
-        let tok = self.advance();
-        match tok {
+        let token = self.advance();
+        match token {
             Token::Number { start, end } => {
                 let raw = &self.src[start as usize..end as usize];
-                let v = fast_float::parse::<f64, _>(raw)
+                let value = fast_float::parse::<f64, _>(raw)
                     .map_err(|e| format!("invalid number '{}': {}", raw, e))?;
-                Ok(self.push(Node::Number(v)))
+                Ok(self.push(Node::Number(value)))
             }
 
             Token::Identifier { start, end, hash } => {
@@ -249,7 +295,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 // hash dispatch entirely.
                 if matches!(self.peek_kind(), TokenKind::LParen) {
                     self.skip(); // eat '('
-                    let arg = self.parse_expr(0)?;
+                    let arg = self.pratt_parse(0)?;
                     self.expect_rparen()?;
                     if let Some(kind) = known_function_kind(hash, arg) {
                         return Ok(self.push(kind));
@@ -264,12 +310,12 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             }
 
             Token::Minus => {
-                let inner = self.parse_expr(25)?;
+                let inner = self.pratt_parse(25)?;
                 Ok(self.push(Node::Neg(inner)))
             }
 
             Token::LeftParenthesis => {
-                let inner = self.parse_expr(0)?;
+                let inner = self.pratt_parse(0)?;
                 self.expect_rparen()?;
                 Ok(inner)
             }
@@ -281,39 +327,39 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     /// Parse a binary operator as the LED (left denotation) of an expression.
     #[inline(always)]
     fn led(&mut self, left: u32) -> Result<u32, String> {
-        let tok = self.advance();
-        match tok {
+        let token = self.advance();
+        match token {
             // '=' is now a general equation separator — both sides can be
             // arbitrary expressions. No lhs restriction at parse time.
             Token::Equals => {
-                let right = self.parse_expr(4)?; // rbp=4 → right-associative
+                let right = self.pratt_parse(4)?; // rbp=4 → right-associative
                 Ok(self.push(Node::Equation(left, right)))
             }
             Token::Plus => {
-                let right = self.parse_expr(10)?;
+                let right = self.pratt_parse(10)?;
                 Ok(self.push(Node::Add(left, right)))
             }
             Token::Minus => {
-                let right = self.parse_expr(10)?;
+                let right = self.pratt_parse(10)?;
                 Ok(self.push(Node::Sub(left, right)))
             }
-            Token::Asterisk => {
-                let right = self.parse_expr(20)?;
+            Token::Multiply => {
+                let right = self.pratt_parse(20)?;
                 Ok(self.push(Node::Mul(left, right)))
             }
-            Token::ForwardSlash => {
-                let right = self.parse_expr(20)?;
+            Token::Divide => {
+                let right = self.pratt_parse(20)?;
                 Ok(self.push(Node::Div(left, right)))
             }
-            Token::Caret => {
-                let right = self.parse_expr(29)?;
+            Token::Exponent => {
+                let right = self.pratt_parse(29)?;
                 Ok(self.push(Node::Pow(left, right)))
             }
             // Implicit multiply: "x(0)" -> x * (0). The '(' was just
             // consumed by advance(); parse the inner expression as a normal
             // parenthesized group, then multiply.
             Token::LeftParenthesis => {
-                let right = self.parse_expr(0)?;
+                let right = self.pratt_parse(0)?;
                 self.expect_rparen()?;
                 Ok(self.push(Node::Mul(left, right)))
             }
@@ -326,6 +372,18 @@ impl<'src, 'arena> Parser<'src, 'arena> {
 mod tests {
     use super::*;
     use crate::lexer::Tokenizer;
+
+    #[test]
+    fn test_fn_kind_of() {
+        assert_eq!(kind_of(&Token::Plus), TokenKind::Plus);
+    }
+
+    #[test]
+    fn test_fn_known_function_kind() {
+        let node = known_function_kind(KW_SIN, 30);
+        assert_eq!(node, Some(Node::Sin(30)));
+        assert_eq!(known_function_kind(0, 30), None);
+    }
 
     #[test]
     fn test_equation_both_sides() {

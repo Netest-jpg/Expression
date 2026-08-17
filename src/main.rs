@@ -45,9 +45,9 @@ fn write_tokens<W: Write>(
                 let s = match other {
                     Token::Plus => "+",
                     Token::Minus => "-",
-                    Token::Asterisk => "*",
-                    Token::ForwardSlash => "/",
-                    Token::Caret => "^",
+                    Token::Multiply => "*",
+                    Token::Divide => "/",
+                    Token::Exponent => "^",
                     Token::LeftParenthesis => "(",
                     Token::RightParenthesis => ")",
                     Token::Equals => "=",
