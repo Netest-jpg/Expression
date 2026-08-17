@@ -6,7 +6,7 @@ use expression::evaluation::{
 };
 use expression::lexer::{Token, Tokenizer};
 use expression::parser::{Node, Parser};
-use expression::simplify::simplify;
+use expression::simplification::simplify;
 use expression::variables::{VariableStore, collect_variables};
 
 use zmij::Buffer as DtoaBuffer;

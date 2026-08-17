@@ -2,7 +2,7 @@ use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use expression::evaluation::{evaluate_pending, try_simple_assign};
 use expression::lexer::Tokenizer;
 use expression::parser::{Node, Parser};
-use expression::simplify::simplify;
+use expression::simplification::simplify;
 use expression::variables::{VariableStore, collect_variables};
 
 fn bench_full_pipeline(c: &mut Criterion) {
