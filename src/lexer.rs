@@ -107,8 +107,8 @@ fn is_ident_char(c: u8) -> bool {
 #[derive(Clone, Copy)]
 enum Dispatch {
     Whitespace,
-    Digit,
-    Alpha,
+    Number,
+    Identifier,
     Plus,
     Minus,
     Multiply,
@@ -137,21 +137,21 @@ const fn build_dispatch_table() -> [Dispatch; 256] {
     t[b'\r' as usize] = Dispatch::Whitespace;
     let mut c = b'0';
     while c <= b'9' {
-        t[c as usize] = Dispatch::Digit;
+        t[c as usize] = Dispatch::Number;
         c += 1;
     }
-    t[b'.' as usize] = Dispatch::Digit;
+    t[b'.' as usize] = Dispatch::Number;
     let mut c = b'a';
     while c <= b'z' {
-        t[c as usize] = Dispatch::Alpha;
+        t[c as usize] = Dispatch::Identifier;
         c += 1;
     }
     let mut c = b'A';
     while c <= b'Z' {
-        t[c as usize] = Dispatch::Alpha;
+        t[c as usize] = Dispatch::Identifier;
         c += 1;
     }
-    t[b'_' as usize] = Dispatch::Alpha;
+    t[b'_' as usize] = Dispatch::Identifier;
     t[b'+' as usize] = Dispatch::Plus;
     t[b'-' as usize] = Dispatch::Minus;
     t[b'*' as usize] = Dispatch::Multiply;
@@ -286,7 +286,7 @@ impl<'src> Tokenizer<'src> {
                     self.advance();
                 }
 
-                Dispatch::Digit => {
+                Dispatch::Number => {
                     let tok = self.read_number()?;
                     // implicit multiply: "2x" → Number Asterisk Identifier
                     let implicit = self.current().is_some_and(is_ident_char);
@@ -296,7 +296,7 @@ impl<'src> Tokenizer<'src> {
                     }
                 }
 
-                Dispatch::Alpha => {
+                Dispatch::Identifier => {
                     tokens.push(self.read_identifier());
                 }
 

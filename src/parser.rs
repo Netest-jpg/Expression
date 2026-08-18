@@ -276,7 +276,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         match token {
             Token::Number { start, end } => {
                 let raw = &self.src[start as usize..end as usize];
-                let value = fast_float::parse::<f64, _>(raw)
+                let value = fast_float::parse::<f64, &str>(raw)
                     .map_err(|e| format!("invalid number '{}': {}", raw, e))?;
                 Ok(self.push(Node::Number(value)))
             }
