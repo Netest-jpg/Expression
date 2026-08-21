@@ -289,7 +289,7 @@ pub struct Tokenizer<'src> {
 impl<'src> Tokenizer<'src> {
     /// Creates a new [`Tokenizer`] with the supplied string literal.\
     /// Stores the string literal as a byte slice
-    /// and sets the pos 0.
+    /// and sets the [`pos`] 0.
     pub fn new(input: &'src str) -> Self {
         Tokenizer {
             src: input.as_bytes(),
@@ -297,11 +297,12 @@ impl<'src> Tokenizer<'src> {
         }
     }
 
-    /// Takes in a mutable vector of Token,
+    /// Takes in a mutable vector of [`Token`],
     /// clears out the pre-existing elements inside the vector,
     /// makes a rough estimate to set for token capacity (`hint = self.src.len()/2+2`),
-    /// reserves capacity for `hint - tokens.len()`
-    /// tokenizes the src's byte slice into a vector of `Token`s and pushes them into the vector.
+    /// reserves capacity for `hint - tokens.len()`,
+    /// tokenizes the src's byte slice into a vector of [`Token`]s
+    /// and pushes them into the vector.
     /// # Example:
     /// ```rust
     /// let src = "2x+3";
@@ -410,22 +411,26 @@ impl<'src> Tokenizer<'src> {
     }
 
     /// Advances the tokenizer to the next byte.\
-    /// i.e. it sets the Tokenizer's pos to the next byte's index.
+    /// i.e. it sets the Tokenizer's [`pos`] to the next byte's index.
     #[inline(always)]
     fn advance(&mut self) {
         self.pos += 1;
     }
 
-    /// Reads a numeric literal from the current position.
+    /// Reads the numeric string literal from the current position.
     /// The number may should contain digits and at most one decimal point.\
     /// \
-    /// Returns `Token::Number` spanning the consumed source range,
+    /// Returns [`Token::Number`] spanning the consumed source range,
     /// **i.e.**, until the number is finished.\
     /// \
     /// Returns an Error if there are multiple decimal points or if there is no digit
     ///
     /// # Example:
     /// ```rust
+    /// let src = "1234";
+    /// let mut expression = Tokenizer::new(src);
+    /// let result = expression.read_number();
+    /// assert_eq!(result, Ok(Token::Number { start: 0, end: 4 }));
     /// ```
     #[inline(always)]
     fn read_number(&mut self) -> Result<Token, String> {
@@ -462,7 +467,20 @@ impl<'src> Tokenizer<'src> {
         })
     }
 
-    /// Reads an identifier from the input string and returns it as a [`Token::Identifier`].
+    /// Reads the string literal from the current position,
+    /// checks if the string literal is valid indentifier character using `is_ident_char()`,
+    /// updates the hash field using `fnv1a_update()`,
+    /// advances the position using `advance()`.
+    /// \
+    /// Returns [`Token::Identifier`] spanning the consumed source range,
+    /// **i.e.**, until the instance of the identifer is finished.\
+    /// # Example:
+    /// ```rust
+    /// let src = "2hello";
+    /// let mut expression = Tokenizer::new(src);
+    /// let result = expression.read_identifier();
+    /// assert!(matches!(result, Token::Identifier { start, end, hash }));
+    /// ```
     #[inline(always)]
     fn read_identifier(&mut self) -> Token {
         let start = self.pos as u32;
@@ -539,7 +557,7 @@ mod tests {
         let token = Token::Identifier {
             start: 1,
             end: 2,
-            hash: 111111,
+            hash: 111111, //picked randomly - shouldn't make a difference
         };
         assert_eq!(token.name(src), "x");
     }
@@ -584,6 +602,15 @@ mod tests {
         let mut expression = Tokenizer::new(src);
         let result = expression.read_number();
         assert_eq!(result, Ok(Token::Number { start: 0, end: 4 }));
+    }
+
+    #[test]
+    #[allow(unused_variables)]
+    fn tests_fn_read_identifier() {
+        let src = "2hello";
+        let mut expression = Tokenizer::new(src);
+        let result = expression.read_identifier();
+        assert!(matches!(result, Token::Identifier { start, end, hash }));
     }
 
     #[test]
