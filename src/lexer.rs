@@ -62,7 +62,6 @@ pub const KW_ASECH: u64 = keyword_hash(b"asech");
 
 static IS_IDENT: [u8; 32] = build_ident_table();
 static DISPATCH: [Dispatch; 256] = build_dispatch_table();
-
 /// Builds a bitset of 32 bytes **at compile-time**, where each byte represents 8 characters.\
 /// Each bit in the byte is set to **1** if the corresponding character is an identifier character.\
 /// # Allowed characters:
@@ -163,14 +162,6 @@ const fn build_dispatch_table() -> [Dispatch; 256] {
     t
 }
 
-// Byte offsets (not &str) keep Token lifetime-free, so Vec<Token> can be
-// reused across REPL iterations instead of reallocating a fresh Vec<Token<'src>> per input.
-// Use .raw(src)/.name(src) to get the text back.
-
-// Offsets are u32, not usize, to keep Token small (halves offset size on
-// 64-bit) and cache-friendly across the reused token Vec. u32 caps source
-// size at ~4GB, which is a non-issue here. Casts to usize happen only
-// inside .raw()/.name() at slice time.
 #[derive(Clone, PartialEq)]
 pub enum Token {
     /// Byte range in the source. Call `.raw(src)` when needed.
@@ -196,7 +187,20 @@ pub enum Token {
 }
 
 impl Token {
-    /// Returns the raw source text for that numeric literal.
+    /// Returns the raw source text for the corresponding number token.\
+    /// Panics if called on any other token variant.
+    /// # Example:
+    /// ```rust
+    /// let src = "123 + 456";
+    /// let token = Token::Number { start: 0, end: 3};
+    /// assert_eq!(token.raw(src), "123");
+    /// ```
+    ///
+    /// ```should_panic
+    /// let src = "123 + 456";
+    /// let token = Token::Plus;
+    /// token.raw(src); // panics
+    /// ```
     #[inline(always)]
     pub fn raw<'src>(&self, src: &'src str) -> &'src str {
         match self {
@@ -205,7 +209,20 @@ impl Token {
         }
     }
 
-    /// Resolve the identifier name from the original source.
+    /// Returns the raw source text for the corresponding identifier token.\
+    /// Panics if called on any other token variant.
+    /// # Example:
+    /// ```rust
+    /// let src = "2x+3";
+    /// let token = Token::Identifer { start: 1, end: 2};
+    /// assert_eq!(token.name(src),"x");
+    /// ```
+    ///
+    /// ```should_panic
+    /// let src = "2x+3";
+    /// let token = Tokenn::Plus;
+    /// token.name(src); // panics
+    /// ```
     #[inline(always)]
     pub fn name<'src>(&self, src: &'src str) -> &'src str {
         match self {
@@ -214,13 +231,28 @@ impl Token {
         }
     }
 
-    /// Parse the numeric value on demand.
+    /// Parse a raw string literal to f64.\
+    /// Returns an error either if the string literal is not a valid decimal number
+    /// or if any characters are left remaining unparsed.
+    /// # Example:
+    /// ```rust
+    /// let src = "3.14"
+    /// let token = Token::Number { start: 0, end: 4}
+    /// assert_eq!(token.as_f64(src), 3.14);
+    /// ```
     #[inline(always)]
     pub fn as_f64(&self, src: &str) -> f64 {
         fast_float::parse::<f64, &str>(self.raw(src)).expect("invalid number")
     }
 
-    /// Returns the identifier name, or None.
+    /// Returns the raw source text as Some() for the corresponding identifier token.\
+    /// Returns None if called on any other token variant.
+    /// # Example:
+    /// ```rust
+    /// let src = "2x+3";
+    /// let token = Token::Identifer { start: 1, end: 2};
+    /// assert_eq!(token.as_ident(src),"x");
+    /// ```
     #[inline(always)]
     pub fn as_ident<'src>(&self, src: &'src str) -> Option<&'src str> {
         match self {
@@ -255,7 +287,9 @@ pub struct Tokenizer<'src> {
 }
 
 impl<'src> Tokenizer<'src> {
-    /// Creates a new [`Tokenizer`] with the given input string.
+    /// Creates a new [`Tokenizer`] with the supplied string literal.\
+    /// Stores the string literal as a byte slice
+    /// and sets the pos 0.
     pub fn new(input: &'src str) -> Self {
         Tokenizer {
             src: input.as_bytes(),
@@ -263,7 +297,28 @@ impl<'src> Tokenizer<'src> {
         }
     }
 
-    /// Tokenizes the input string into a vector of [`Token`]s.
+    /// Takes in a mutable vector of Token,
+    /// clears out the pre-existing elements inside the vector,
+    /// makes a rough estimate to set for token capacity (`hint = self.src.len()/2+2`),
+    /// reserves capacity for `hint - tokens.len()`
+    /// tokenizes the src's byte slice into a vector of `Token`s and pushes them into the vector.
+    /// # Example:
+    /// ```rust
+    /// let src = "2x+3";
+    /// let mut expression = Tokenizer::new(src);
+    /// let mut tokens = Vec::new();
+    /// expression.tokenize(&mut tokens).unwrap();
+    /// assert_eq!(tokens.len(), 6);
+    /// assert_eq!(tokens[0], Token::Number { start: 0, end: 1 });
+    /// assert_eq!(tokens[1], Token::Multiply);
+    /// assert_eq!(tokens[3], Token::Plus);
+    /// assert_eq!(tokens[4], Token::Number { start: 3, end: 4 });
+    /// assert_eq!(tokens[5], Token::EndOfFile);
+
+    /// assert_eq!(tokens[0].raw(src), "2");
+    /// assert_eq!(tokens[2].name(src), "x");
+    /// assert_eq!(tokens[4].raw(src), "3");
+    /// ```
     pub fn tokenize(&mut self, tokens: &mut Vec<Token>) -> Result<(), String> {
         tokens.clear();
         // Typical token is 2-3 chars; src.len()/2+2 avoids the large
@@ -287,10 +342,10 @@ impl<'src> Tokenizer<'src> {
                 }
 
                 Dispatch::Number => {
-                    let tok = self.read_number()?;
+                    let token = self.read_number()?;
                     // implicit multiply: "2x" → Number Asterisk Identifier
                     let implicit = self.current().is_some_and(is_ident_char);
-                    tokens.push(tok);
+                    tokens.push(token);
                     if implicit {
                         tokens.push(Token::Multiply);
                     }
@@ -304,30 +359,37 @@ impl<'src> Tokenizer<'src> {
                     self.advance();
                     tokens.push(Token::Plus);
                 }
+
                 Dispatch::Minus => {
                     self.advance();
                     tokens.push(Token::Minus);
                 }
+
                 Dispatch::Multiply => {
                     self.advance();
                     tokens.push(Token::Multiply);
                 }
+
                 Dispatch::Divide => {
                     self.advance();
                     tokens.push(Token::Divide);
                 }
+
                 Dispatch::Exponent => {
                     self.advance();
                     tokens.push(Token::Exponent);
                 }
+
                 Dispatch::LParen => {
                     self.advance();
                     tokens.push(Token::LeftParenthesis);
                 }
+
                 Dispatch::RParen => {
                     self.advance();
                     tokens.push(Token::RightParenthesis);
                 }
+
                 Dispatch::Equals => {
                     self.advance();
                     tokens.push(Token::Equals);
@@ -341,37 +403,49 @@ impl<'src> Tokenizer<'src> {
         Ok(())
     }
 
-    /// Returns the current byte, if any.
+    /// Returns the current byte, else returns `None`.
     #[inline(always)]
     fn current(&self) -> Option<u8> {
         self.src.get(self.pos).copied()
     }
 
-    /// Advances the tokenizer to the next byte.
+    /// Advances the tokenizer to the next byte.\
+    /// i.e. it sets the Tokenizer's pos to the next byte's index.
     #[inline(always)]
     fn advance(&mut self) {
         self.pos += 1;
     }
 
-    /// Reads a number from the input string and returns it as a [`Token::Number`].
+    /// Reads a numeric literal from the current position.
+    /// The number may should contain digits and at most one decimal point.\
+    /// \
+    /// Returns `Token::Number` spanning the consumed source range,
+    /// **i.e.**, until the number is finished.\
+    /// \
+    /// Returns an Error if there are multiple decimal points or if there is no digit
+    ///
+    /// # Example:
+    /// ```rust
+    /// ```
     #[inline(always)]
     fn read_number(&mut self) -> Result<Token, String> {
         let start = self.pos as u32;
         let mut dot_seen = false;
         let mut digit_seen = false;
 
-        while let Some(b) = self.current() {
-            if b.is_ascii_digit() {
+        while let Some(byte) = self.current() {
+            if byte.is_ascii_digit() {
                 digit_seen = true;
                 self.advance();
-            } else if b == b'.' && !dot_seen {
+            } else if byte == b'.' && !dot_seen {
                 dot_seen = true;
                 self.advance();
-            } else if b == b'.' {
-                let so_far = std::str::from_utf8(&self.src[start as usize..self.pos]).unwrap();
+            } else if byte == b'.' {
+                let invalid_number =
+                    std::str::from_utf8(&self.src[start as usize..=self.pos]).unwrap();
                 return Err(format!(
-                    "Invalid number: unexpected second '.' in '{}'",
-                    so_far
+                    "Invalid number: Unexpected second '.' in '{}'",
+                    invalid_number
                 ));
             } else {
                 break;
@@ -379,7 +453,7 @@ impl<'src> Tokenizer<'src> {
         }
 
         if !digit_seen {
-            return Err("Invalid number: expected at least one digit".to_string());
+            return Err("Invalid number: Expected at least one digit".to_string());
         }
 
         Ok(Token::Number {
@@ -394,9 +468,9 @@ impl<'src> Tokenizer<'src> {
         let start = self.pos as u32;
         let mut hash = FNV_OFFSET_BASIS;
 
-        while let Some(b) = self.current() {
-            if is_ident_char(b) {
-                hash = fnv1a_update(hash, b);
+        while let Some(byte) = self.current() {
+            if is_ident_char(byte) {
+                hash = fnv1a_update(hash, byte);
                 self.advance();
             } else {
                 break;
@@ -444,6 +518,75 @@ mod tests {
     }
 
     #[test]
+    fn test_fn_raw() {
+        let src = "123 + 456";
+        let token = Token::Number { start: 0, end: 3 };
+        assert_eq!(token.raw(src), "123");
+    }
+
+    #[test]
+    #[should_panic(expected = "Token::raw called on non-Number token")]
+    fn test_fn_raw_panics_on_non_number() {
+        let src = "123 + 456";
+        let token = Token::Plus;
+
+        token.raw(src);
+    }
+
+    #[test]
+    fn test_fn_name() {
+        let src = "2x+3";
+        let token = Token::Identifier {
+            start: 1,
+            end: 2,
+            hash: 111111,
+        };
+        assert_eq!(token.name(src), "x");
+    }
+
+    #[test]
+    #[should_panic(expected = "Token::name called on non-Identifier token")]
+    fn test_fn_name_panics_on_non_identifier() {
+        let src = "2x+3";
+        let token = Token::Plus;
+
+        token.name(src);
+    }
+
+    #[test]
+    fn test_fn_to_f64() {
+        let src = "3.14";
+        let token = Token::Number { start: 0, end: 4 };
+        assert_eq!(token.as_f64(src), 3.14);
+    }
+
+    #[test]
+    fn test_fn_tokenize() {
+        let src = "2x+3";
+        let mut expression = Tokenizer::new(src);
+        let mut tokens = Vec::new();
+        expression.tokenize(&mut tokens).unwrap();
+        assert_eq!(tokens.len(), 6);
+        assert_eq!(tokens[0], Token::Number { start: 0, end: 1 });
+        assert_eq!(tokens[1], Token::Multiply);
+        assert_eq!(tokens[3], Token::Plus);
+        assert_eq!(tokens[4], Token::Number { start: 3, end: 4 });
+        assert_eq!(tokens[5], Token::EndOfFile);
+
+        assert_eq!(tokens[0].raw(src), "2");
+        assert_eq!(tokens[2].name(src), "x");
+        assert_eq!(tokens[4].raw(src), "3");
+    }
+
+    #[test]
+    fn test_fn_read_number() {
+        let src = "1234";
+        let mut expression = Tokenizer::new(src);
+        let result = expression.read_number();
+        assert_eq!(result, Ok(Token::Number { start: 0, end: 4 }));
+    }
+
+    #[test]
     fn test_number_lazy_parse() {
         let src = "3.14";
         let (tokens, _) = tok(src);
@@ -461,7 +604,7 @@ mod tests {
         let mut tokens = Vec::new();
         let result = Tokenizer::new(".").tokenize(&mut tokens);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("expected at least one digit"));
+        assert!(result.unwrap_err().contains("Expected at least one digit"));
     }
 
     #[test]

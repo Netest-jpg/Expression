@@ -1,3 +1,4 @@
+use core::fmt::NumBuffer;
 use std::io::IsTerminal;
 use std::io::{BufRead, BufWriter, Write};
 
@@ -67,8 +68,8 @@ fn write_tokens<W: Write>(
 #[inline(always)]
 fn write_value<W: Write>(out: &mut W, v: f64) -> std::io::Result<()> {
     if v.fract() == 0.0 && v.abs() < 1e15 {
-        let mut buf = itoa::Buffer::new();
-        out.write_all(buf.format(v as i64).as_bytes())
+        let mut buf = NumBuffer::<i64>::new();
+        out.write_all((v as i64).format_into(&mut buf).as_bytes())
     } else {
         let mut buf = DtoaBuffer::new();
         out.write_all(buf.format(v).as_bytes())

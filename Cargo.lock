@@ -231,7 +231,6 @@ dependencies = [
  "criterion",
  "dhat",
  "fast-float2",
- "itoa",
  "zmij",
 ]
 
