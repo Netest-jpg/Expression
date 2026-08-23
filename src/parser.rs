@@ -23,7 +23,30 @@ enum TokenKind {
     _Count = 11,
 }
 
-/// The left-binding power (LBP) of each TokenKind.
+/// The left-binding power (LBP) of each TokenKind.\
+/// \
+/// [`TokenKind::Number`] = 0
+/// \
+/// [`TokenKind::Ident`] = 0
+/// \
+/// [`TokenKind::Plus`] = 10
+/// \
+/// [`TokenKind::Minus`] = 10
+/// \
+/// [`TokenKind::Multiply`] = 20
+/// \
+/// [`TokenKind::Divide`] = 20
+/// \
+/// [`TokenKind::Exponent`] = 30
+/// \
+/// [`TokenKind::LParen`] = 20
+/// \
+/// [`TokenKind::RParen`] = 0
+/// \
+/// [`TokenKind::EOF`] = 0
+/// \
+/// [`TokenKind::Equals`] = 5
+
 static LBP: [u8; TokenKind::_Count as usize] = {
     let mut t = [0u8; TokenKind::_Count as usize];
     t[TokenKind::Equals as usize] = 5; // lowest infix; right-assoc: rbp = 4
@@ -38,8 +61,9 @@ static LBP: [u8; TokenKind::_Count as usize] = {
 
 /// Converts a [`Token`] to a [`TokenKind`].\
 /// # Example:
-/// ```rust
-/// assert_eq!(kind_of(&Token::Plus ), TokenKind::Plus);
+/// ```ignore
+/// // kind_of and TokenKind are private; see the `test_fn_kind_of` unit test.
+/// assert_eq!(kind_of(&Token::Plus), TokenKind::Plus);
 /// ```
 #[inline(always)]
 fn kind_of(token: &Token) -> TokenKind {
@@ -111,51 +135,99 @@ pub enum Node {
     Equation(u32, u32),
 }
 
-/// Resolves a function hash to its corresponding [`Node`].
-///
-/// The supplied `arg` is stored in the resulting [`Node`].\
-/// Returns `None` if the supplied `hash` doesn't match any of the supported functions' hash.
-///
-/// # Examples
-///
-/// ```rust
-/// let node = known_function_kind(KW_SIN, 30);
-///
-/// assert_eq!(node, Some(Node::Sin(30)));
-/// assert_eq!(known_function_kind(0, 30), None);
-/// ```
+const KW_TABLE_SIZE: usize = 64; // power of 2; 27 entries → ~42% load factor
+const KW_MASK: u64 = (KW_TABLE_SIZE as u64) - 1;
+
+/// (keyword hash, tag). tag identifies which Node variant to build.
+/// hash == 0 marks an empty slot (no real FNV-1a hash of these keywords is 0).
+static KW_TABLE: [(u64, u8); KW_TABLE_SIZE] = build_kw_table();
+
+const fn build_kw_table() -> [(u64, u8); KW_TABLE_SIZE] {
+    let mut t = [(0u64, 0u8); KW_TABLE_SIZE];
+    const ENTRIES: [(u64, u8); 27] = [
+        (KW_SIN, 0),
+        (KW_COS, 1),
+        (KW_TAN, 2),
+        (KW_LN, 3),
+        (KW_LOG, 4),
+        (KW_SQRT, 5),
+        (KW_SEC, 6),
+        (KW_CSC, 7),
+        (KW_COT, 8),
+        (KW_ASIN, 9),
+        (KW_ACOS, 10),
+        (KW_ATAN, 11),
+        (KW_ACSC, 12),
+        (KW_ASEC, 13),
+        (KW_ACOT, 14),
+        (KW_SINH, 15),
+        (KW_COSH, 16),
+        (KW_TANH, 17),
+        (KW_SECH, 18),
+        (KW_CSCH, 19),
+        (KW_COTH, 20),
+        (KW_ASINH, 21),
+        (KW_ACOSH, 22),
+        (KW_ATANH, 23),
+        (KW_ASECH, 24),
+        (KW_ACSCH, 25),
+        (KW_ACOTH, 26),
+    ];
+    let mut i = 0;
+    while i < ENTRIES.len() {
+        let (hash, tag) = ENTRIES[i];
+        let mut slot = (hash & KW_MASK) as usize;
+        while t[slot].0 != 0 {
+            slot = (slot + 1) % KW_TABLE_SIZE;
+        }
+        t[slot] = (hash, tag);
+        i += 1;
+    }
+    t
+}
+
 #[inline(always)]
 fn known_function_kind(hash: u64, arg: u32) -> Option<Node> {
-    Some(match hash {
-        KW_SIN => Node::Sin(arg),
-        KW_COS => Node::Cos(arg),
-        KW_TAN => Node::Tan(arg),
-        KW_LN => Node::Ln(arg),
-        KW_LOG => Node::Log(arg),
-        KW_SQRT => Node::Sqrt(arg),
-        KW_SEC => Node::Sec(arg),
-        KW_CSC => Node::Csc(arg),
-        KW_COT => Node::Cot(arg),
-        KW_ASIN => Node::Asin(arg),
-        KW_ACOS => Node::Acos(arg),
-        KW_ATAN => Node::Atan(arg),
-        KW_ACSC => Node::Acsc(arg),
-        KW_ASEC => Node::Asec(arg),
-        KW_ACOT => Node::Acot(arg),
-        KW_SINH => Node::Sinh(arg),
-        KW_COSH => Node::Cosh(arg),
-        KW_TANH => Node::Tanh(arg),
-        KW_SECH => Node::Sech(arg),
-        KW_CSCH => Node::Csch(arg),
-        KW_COTH => Node::Coth(arg),
-        KW_ASINH => Node::Asinh(arg),
-        KW_ACOSH => Node::Acosh(arg),
-        KW_ATANH => Node::Atanh(arg),
-        KW_ASECH => Node::Asech(arg),
-        KW_ACSCH => Node::Acsch(arg),
-        KW_ACOTH => Node::Acoth(arg),
-        _ => return None,
-    })
+    let mut slot = (hash & KW_MASK) as usize;
+    loop {
+        let (h, tag) = unsafe { *KW_TABLE.get_unchecked(slot) };
+        if h == 0 {
+            return None; // empty slot — not found, check this first
+        }
+        if h == hash {
+            return Some(match tag {
+                0 => Node::Sin(arg),
+                1 => Node::Cos(arg),
+                2 => Node::Tan(arg),
+                3 => Node::Ln(arg),
+                4 => Node::Log(arg),
+                5 => Node::Sqrt(arg),
+                6 => Node::Sec(arg),
+                7 => Node::Csc(arg),
+                8 => Node::Cot(arg),
+                9 => Node::Asin(arg),
+                10 => Node::Acos(arg),
+                11 => Node::Atan(arg),
+                12 => Node::Acsc(arg),
+                13 => Node::Asec(arg),
+                14 => Node::Acot(arg),
+                15 => Node::Sinh(arg),
+                16 => Node::Cosh(arg),
+                17 => Node::Tanh(arg),
+                18 => Node::Sech(arg),
+                19 => Node::Csch(arg),
+                20 => Node::Coth(arg),
+                21 => Node::Asinh(arg),
+                22 => Node::Acosh(arg),
+                23 => Node::Atanh(arg),
+                24 => Node::Asech(arg),
+                25 => Node::Acsch(arg),
+                26 => Node::Acoth(arg),
+                _ => unreachable!(),
+            });
+        }
+        slot = (slot + 1) % KW_TABLE_SIZE;
+    }
 }
 
 pub struct Parser<'src, 'arena> {
@@ -183,12 +255,33 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     }
 
     /// Parse the entire expression, returning the root node.
+    /// Returns an `Error` if the last [`TokenKind`] is not [`TokenKind::EOF`].
+    /// # Example:
+    /// ```rust
+    /// use expression::lexer::Tokenizer;
+    /// use expression::parser::{Node, Parser};
+    /// let mut tokens = Vec::new();
+    /// let mut arena = Vec::new();
+    /// let src = "x^2+2*x=2*x-3";
+    ///
+    /// Tokenizer::new(src).tokenize(&mut tokens).unwrap();
+    ///
+    /// let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
+    ///
+    /// assert!(matches!(arena[root as usize], Node::Equation(_, _)));
+    /// ```
     pub fn parse(mut self) -> Result<u32, String> {
         let root = self.pratt_parse(0)?;
-        if self.peek_kind() != TokenKind::EOF {
-            return Err(format!("unexpected trailing token: {:?}", self.peek()));
+
+        if self.peek_tokenkind() != TokenKind::EOF {
+            return self.unexpected_trailing_token();
         }
+
         Ok(root)
+    }
+    #[cold]
+    fn unexpected_trailing_token(&self) -> Result<u32, String> {
+        Err(format!("unexpected trailing token: {:?}", self.peek()))
     }
 
     /// Parses an expression using Pratt parsing with the supplied right-binding power (rbp).
@@ -201,53 +294,13 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     fn pratt_parse(&mut self, rbp: u8) -> Result<u32, String> {
         let mut left = self.nud()?;
         loop {
-            let lbp = unsafe { *LBP.get_unchecked(self.peek_kind() as usize) };
+            let lbp = unsafe { *LBP.get_unchecked(self.peek_tokenkind() as usize) };
             if lbp <= rbp {
                 break;
             }
             left = self.led(left)?;
         }
         Ok(left)
-    }
-
-    #[inline(always)]
-    fn push(&mut self, node: Node) -> u32 {
-        let index = self.arena.len() as u32;
-        self.arena.push(node);
-        index
-    }
-
-    #[inline(always)]
-    fn peek(&self) -> &Token {
-        unsafe { self.tokens.get_unchecked(self.position) }
-    }
-
-    /// Peek at the kind of the current token.
-    #[inline(always)]
-    fn peek_kind(&self) -> TokenKind {
-        kind_of(unsafe { self.tokens.get_unchecked(self.position) })
-    }
-
-    #[inline(always)]
-    fn advance(&mut self) -> Token {
-        let token = unsafe { self.tokens.get_unchecked(self.position) }.clone();
-        self.position += 1;
-        token
-    }
-
-    #[inline(always)]
-    fn skip(&mut self) {
-        self.position += 1;
-    }
-
-    /// Expect the current token to be an rparen, and skip it if it is.
-    #[inline(always)]
-    fn expect_rparen(&mut self) -> Result<(), String> {
-        if self.peek_kind() != TokenKind::RParen {
-            return Err(format!("expected ')', found {:?}", self.peek()));
-        }
-        self.skip();
-        Ok(())
     }
 
     /// Parses a token in null-denotation (NUD) position.
@@ -272,7 +325,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     /// multiplication, so `x(2)` becomes `x * 2`.
     #[inline(always)]
     fn nud(&mut self) -> Result<u32, String> {
-        let token = self.advance();
+        let token = self.consume();
         match token {
             Token::Number { start, end } => {
                 let raw = &self.src[start as usize..end as usize];
@@ -293,7 +346,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 // this is (if any) when a '(' actually follows. Plain
                 // variables, and identifiers not followed by '(', skip the
                 // hash dispatch entirely.
-                if matches!(self.peek_kind(), TokenKind::LParen) {
+                if matches!(self.peek_tokenkind(), TokenKind::LParen) {
                     self.skip(); // eat '('
                     let arg = self.pratt_parse(0)?;
                     self.expect_rparen()?;
@@ -324,10 +377,95 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         }
     }
 
+    /// Returns the token at the current [`position`] and advances [`position`] by 1.
+    ///
+    /// # Safety
+    ///
+    /// This function does not perform bounds checking.
+    /// The caller must ensure that [`position`] is less than the number of tokens.
+    /// Otherwise, this function invokes undefined behavior.
+    ///
+    /// # Example:
+    /// ```ignore
+    /// // consume and position are private; see the `test_fn_consume` unit test.
+    /// let src = "2x+3";
+    /// let mut tokens = Vec::new();
+    /// let mut arena = Vec::new();
+    /// Tokenizer::new(src).tokenize(&mut tokens).unwrap();
+    /// let mut parser = Parser::new(&tokens, src, &mut arena);
+    ///
+    /// assert_eq!(parser.consume(), Token::Number { start: 0, end: 1 });
+    /// assert_eq!(parser.position, 1);
+    /// ```
+    #[inline(always)]
+    fn consume(&mut self) -> Token {
+        let token = unsafe { self.tokens.get_unchecked(self.position) }.clone();
+        self.position += 1;
+        token
+    }
+
+    /// Stores a [`Node`] in the parser's [`arena`] and
+    /// returns the index of the newly appended [`Node`].
+    ///
+    /// # Example:
+    /// ```ignore
+    /// // push and arena are private; see the `test_fn_push` unit test.
+    /// let src = "";
+    /// let mut tokens = Vec::new();
+    /// let mut arena = Vec::new();
+    /// Tokenizer::new(src).tokenize(&mut tokens).unwrap();
+    /// let mut parser = Parser::new(&tokens, src, &mut arena);
+    ///
+    /// let index = parser.push(Node::Number(42.0));
+    /// assert_eq!(index, 0);
+    /// assert_eq!(parser.arena.len(), 1);
+    /// ```
+    #[inline(always)]
+    fn push(&mut self, node: Node) -> u32 {
+        let index = self.arena.len() as u32;
+        self.arena.push(node);
+        index
+    }
+
+    /// Returns [`TokenKind`] at the current [`position`].
+    /// # Safety
+    /// This function does not perform bounds checking.
+    /// The caller must ensure that [`position`] must be less than the number of tokens.
+    #[inline(always)]
+    fn peek_tokenkind(&self) -> TokenKind {
+        kind_of(unsafe { self.tokens.get_unchecked(self.position) })
+    }
+
+    /// Expect the current token to be an rparen.\
+    /// Returns an `Error` if it is not [`TokenKind::RParen`] and skips if it is.
+    #[inline(always)]
+    fn expect_rparen(&mut self) -> Result<(), String> {
+        if self.peek_tokenkind() != TokenKind::RParen {
+            return Err(format!("expected ')', found {:?}", self.peek()));
+        }
+        self.skip();
+        Ok(())
+    }
+
+    /// Returns [`Token`] at the current [`position`].
+    /// # Safety
+    /// This function doesn't perform bounds checking.
+    /// The caller must ensure that [`position`] must be less than the number of tokens.
+    #[inline(always)]
+    fn peek(&self) -> &Token {
+        unsafe { self.tokens.get_unchecked(self.position) }
+    }
+
+    /// Skips to the next position.
+    #[inline(always)]
+    fn skip(&mut self) {
+        self.position += 1;
+    }
+
     /// Parse a binary operator as the LED (left denotation) of an expression.
     #[inline(always)]
     fn led(&mut self, left: u32) -> Result<u32, String> {
-        let token = self.advance();
+        let token = self.consume();
         match token {
             // '=' is now a general equation separator — both sides can be
             // arbitrary expressions. No lhs restriction at parse time.
@@ -386,8 +524,31 @@ mod tests {
     }
 
     #[test]
-    fn test_equation_both_sides() {
-        // x^2+2x=2x-3  should parse without error (complex lhs is fine now)
+    fn test_fn_consume() {
+        let src = "2x+3";
+        let mut tokens = Vec::new();
+        let mut arena = Vec::new();
+        Tokenizer::new(src).tokenize(&mut tokens).unwrap();
+        let mut parser = Parser::new(&tokens, src, &mut arena);
+        assert_eq!(parser.consume(), Token::Number { start: 0, end: 1 });
+        assert_eq!(parser.position, 1);
+    }
+
+    #[test]
+    fn test_fn_push() {
+        let src = "";
+        let mut tokens = Vec::new();
+        let mut arena = Vec::new();
+        Tokenizer::new(src).tokenize(&mut tokens).unwrap();
+        let mut parser = Parser::new(&tokens, src, &mut arena);
+
+        let index = parser.push(Node::Number(42.0));
+        assert_eq!(index, 0);
+        assert_eq!(parser.arena.len(), 1);
+    }
+
+    #[test]
+    fn test_fn_parse() {
         let mut tokens = Vec::new();
         let mut arena = Vec::new();
         let src = "x^2+2*x=2*x-3";

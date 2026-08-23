@@ -143,6 +143,35 @@ fn bench_simplify_deep(c: &mut Criterion) {
     });
 }
 
+const EXPR: &str = "sin(x)^2 + cos(x)^2 + sqrt(9) * ln(e)";
+
+fn bench_tokenize(c: &mut Criterion) {
+    c.bench_function("tokenize", |b| {
+        let mut tokens = Vec::new();
+        b.iter(|| {
+            Tokenizer::new(black_box(EXPR))
+                .tokenize(&mut tokens)
+                .unwrap();
+            black_box(&tokens);
+        });
+    });
+}
+
+fn bench_parse(c: &mut Criterion) {
+    let mut tokens = Vec::new();
+    Tokenizer::new(EXPR).tokenize(&mut tokens).unwrap();
+    c.bench_function("pratt_parse", |b| {
+        let mut arena = Vec::new();
+        b.iter(|| {
+            arena.clear();
+            let root = Parser::new(black_box(&tokens), EXPR, &mut arena)
+                .parse()
+                .unwrap();
+            black_box(root);
+        });
+    });
+}
+
 criterion_group!(
     benches,
     bench_full_pipeline,
@@ -152,6 +181,8 @@ criterion_group!(
     bench_collect_vars,
     bench_simplify_only,
     bench_parse_and_simplify,
-    bench_simplify_deep
+    bench_simplify_deep,
+    bench_tokenize,
+    bench_parse,
 );
 criterion_main!(benches);

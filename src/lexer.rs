@@ -62,6 +62,7 @@ pub const KW_ASECH: u64 = keyword_hash(b"asech");
 
 static IS_IDENT: [u8; 32] = build_ident_table();
 static DISPATCH: [Dispatch; 256] = build_dispatch_table();
+
 /// Builds a bitset of 32 bytes **at compile-time**, where each byte represents 8 characters.\
 /// Each bit in the byte is set to **1** if the corresponding character is an identifier character.\
 /// # Allowed characters:
@@ -191,12 +192,14 @@ impl Token {
     /// Panics if called on any other token variant.
     /// # Example:
     /// ```rust
+    /// use expression::lexer::Token;
     /// let src = "123 + 456";
-    /// let token = Token::Number { start: 0, end: 3};
+    /// let token = Token::Number { start: 0, end: 3 };
     /// assert_eq!(token.raw(src), "123");
     /// ```
     ///
     /// ```should_panic
+    /// use expression::lexer::Token;
     /// let src = "123 + 456";
     /// let token = Token::Plus;
     /// token.raw(src); // panics
@@ -213,14 +216,16 @@ impl Token {
     /// Panics if called on any other token variant.
     /// # Example:
     /// ```rust
+    /// use expression::lexer::Token;
     /// let src = "2x+3";
-    /// let token = Token::Identifer { start: 1, end: 2};
-    /// assert_eq!(token.name(src),"x");
+    /// let token = Token::Identifier { start: 1, end: 2, hash: 0 };
+    /// assert_eq!(token.name(src), "x");
     /// ```
     ///
     /// ```should_panic
+    /// use expression::lexer::Token;
     /// let src = "2x+3";
-    /// let token = Tokenn::Plus;
+    /// let token = Token::Plus;
     /// token.name(src); // panics
     /// ```
     #[inline(always)]
@@ -236,8 +241,9 @@ impl Token {
     /// or if any characters are left remaining unparsed.
     /// # Example:
     /// ```rust
-    /// let src = "3.14"
-    /// let token = Token::Number { start: 0, end: 4}
+    /// use expression::lexer::Token;
+    /// let src = "3.14";
+    /// let token = Token::Number { start: 0, end: 4 };
     /// assert_eq!(token.as_f64(src), 3.14);
     /// ```
     #[inline(always)]
@@ -249,9 +255,10 @@ impl Token {
     /// Returns None if called on any other token variant.
     /// # Example:
     /// ```rust
+    /// use expression::lexer::Token;
     /// let src = "2x+3";
-    /// let token = Token::Identifer { start: 1, end: 2};
-    /// assert_eq!(token.as_ident(src),"x");
+    /// let token = Token::Identifier { start: 1, end: 2, hash: 0 };
+    /// assert_eq!(token.as_ident(src), Some("x"));
     /// ```
     #[inline(always)]
     pub fn as_ident<'src>(&self, src: &'src str) -> Option<&'src str> {
@@ -305,6 +312,7 @@ impl<'src> Tokenizer<'src> {
     /// and pushes them into the vector.
     /// # Example:
     /// ```rust
+    /// use expression::lexer::{Token, Tokenizer};
     /// let src = "2x+3";
     /// let mut expression = Tokenizer::new(src);
     /// let mut tokens = Vec::new();
@@ -315,7 +323,6 @@ impl<'src> Tokenizer<'src> {
     /// assert_eq!(tokens[3], Token::Plus);
     /// assert_eq!(tokens[4], Token::Number { start: 3, end: 4 });
     /// assert_eq!(tokens[5], Token::EndOfFile);
-
     /// assert_eq!(tokens[0].raw(src), "2");
     /// assert_eq!(tokens[2].name(src), "x");
     /// assert_eq!(tokens[4].raw(src), "3");
@@ -426,7 +433,8 @@ impl<'src> Tokenizer<'src> {
     /// Returns an Error if there are multiple decimal points or if there is no digit
     ///
     /// # Example:
-    /// ```rust
+    /// ```ignore
+    /// // read_number is private; see the `test_fn_read_number` unit test.
     /// let src = "1234";
     /// let mut expression = Tokenizer::new(src);
     /// let result = expression.read_number();
@@ -475,7 +483,8 @@ impl<'src> Tokenizer<'src> {
     /// Returns [`Token::Identifier`] spanning the consumed source range,
     /// **i.e.**, until the instance of the identifer is finished.\
     /// # Example:
-    /// ```rust
+    /// ```ignore
+    /// // read_identifier is private; see the `tests_fn_read_identifier` unit test.
     /// let src = "2hello";
     /// let mut expression = Tokenizer::new(src);
     /// let result = expression.read_identifier();
