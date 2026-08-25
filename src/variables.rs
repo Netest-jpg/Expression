@@ -2,14 +2,14 @@ use crate::parser::Node;
 pub const VARIABLE_LIMIT: usize = 64;
 
 // TODO: Rename -> VariableBank
-pub struct VariableStore {
+pub struct VariableBank {
     entries: [(u64, f64); VARIABLE_LIMIT], // fixed stack/inline array — no heap
     len: usize,
 }
 
-impl VariableStore {
+impl VariableBank {
     pub fn new() -> Self {
-        VariableStore {
+        VariableBank {
             entries: [(0u64, 0.0f64); VARIABLE_LIMIT],
             len: 0,
         }
@@ -57,8 +57,8 @@ impl VariableStore {
     /// The unknown's value is left as 0.0; call `set_last` to update it.
     /// Used by the Newton solver: one stack copy before the loop, then
     /// `set_last` updates the single f64 each iteration — zero heap allocs.
-    pub fn clone_for_probe(&self, hash: u64) -> VariableStore {
-        let mut probe = VariableStore {
+    pub fn clone_for_probe(&self, hash: u64) -> VariableBank {
+        let mut probe = VariableBank {
             entries: self.entries,
             len: self.len,
         };
@@ -87,7 +87,7 @@ impl VariableStore {
     }
 }
 
-impl Default for VariableStore {
+impl Default for VariableBank {
     // TODO: write a docstring
     fn default() -> Self {
         Self::new()

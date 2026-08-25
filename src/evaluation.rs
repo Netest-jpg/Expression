@@ -1,11 +1,11 @@
 use crate::parser::Node;
-use crate::variables::{VARIABLE_LIMIT, VariableStore, collect_variables};
+use crate::variables::{VARIABLE_LIMIT, VariableBank, collect_variables};
 
 /// Zero-allocation error type for evaluate.  Only converted to String at the
 /// display boundary, so the Newton hot path never heap-allocates on errors.
 #[derive(Debug)]
 pub enum EvaluationError {
-    /// A variable was looked up but had no binding in VariableStore.
+    /// A variable was looked up but had no binding in VariableBank.
     UnboundVariable,
     /// The root node is an Equation — use evaluate_pending instead.
     IsEquation,
@@ -21,7 +21,7 @@ impl EvaluationError {
     }
 }
 // TODO: write a docstring and doctest
-pub fn evaluate(arena: &[Node], idx: u32, vars: &VariableStore) -> Result<f64, EvaluationError> {
+pub fn evaluate(arena: &[Node], idx: u32, vars: &VariableBank) -> Result<f64, EvaluationError> {
     match unsafe { arena.get_unchecked(idx as usize) } {
         Node::Number(v) => Ok(*v),
         Node::Constant(v) => Ok(*v),
@@ -83,7 +83,7 @@ pub fn evaluate(arena: &[Node], idx: u32, vars: &VariableStore) -> Result<f64, E
 pub fn try_simple_assign(
     arena: &[Node],
     root: u32,
-    vars: &mut VariableStore,
+    vars: &mut VariableBank,
 ) -> Result<Option<(u32, u32, f64)>, String> {
     let Node::Equation(lhs, rhs) = &arena[root as usize] else {
         return Ok(None); // not an equation at all
@@ -104,7 +104,7 @@ pub fn try_simple_assign(
 
 // TODO: write a better version of below:
 // -----------------------------------------------------------------------
-// Evaluate a pending equation against the VariableStore.
+// Evaluate a pending equation against the VariableBank.
 //
 // The root must be an Equation node.  Three cases:
 //
@@ -133,7 +133,7 @@ pub enum EvaluationResult {
 pub fn evaluate_pending(
     arena: &[Node],
     root: u32,
-    vars: &VariableStore,
+    vars: &VariableBank,
     src: &str,
 ) -> Result<EvaluationResult, String> {
     // Plain expression (no Equation node at root)
@@ -145,7 +145,7 @@ pub fn evaluate_pending(
         }
     };
 
-    // Collect free variables (unbound in VariableStore).
+    // Collect free variables (unbound in VariableBank).
     let mut free = collect_variables(arena, root);
     if free.overflowed() {
         return Err(format!(
@@ -171,7 +171,7 @@ pub fn evaluate_pending(
 
             // f(x) = lhs(x) - rhs(x); we want f(x) = 0.
             //
-            // Build a probe VariableStore once (one clone of entries + one push),
+            // Build a probe VariableBank once (one clone of entries + one push),
             // then update only the unknown's slot each Newton step via set_last.
             // Zero heap allocations inside the Newton loop.
             let mut probe = vars.clone_for_probe(unknown_hash);
@@ -263,12 +263,12 @@ mod tests {
     use super::*;
     use crate::lexer::Tokenizer;
     use crate::parser::Parser;
-    use crate::variables::VARIABLE_LIMIT;
+    use crate::variables::{VARIABLE_LIMIT, VariableBank};
 
     fn parse_and_eval(src: &str) -> f64 {
         let mut tokens = Vec::new();
         let mut arena = Vec::new();
-        let vars = VariableStore::new();
+        let vars = VariableBank::new();
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
         evaluate(&arena, root, &vars).unwrap()
@@ -351,7 +351,7 @@ mod tests {
     fn test_simple_assign() {
         let mut tokens = Vec::new();
         let mut arena = Vec::new();
-        let mut vars = VariableStore::new();
+        let mut vars = VariableBank::new();
         let src = "x=42";
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
@@ -366,7 +366,7 @@ mod tests {
     fn test_assign_then_use() {
         let mut tokens = Vec::new();
         let mut arena = Vec::new();
-        let mut vars = VariableStore::new();
+        let mut vars = VariableBank::new();
         // Assign x=3
         let src = "x=3";
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
@@ -385,7 +385,7 @@ mod tests {
         // x+2=5  →  x=3
         let mut tokens = Vec::new();
         let mut arena = Vec::new();
-        let vars = VariableStore::new();
+        let vars = VariableBank::new();
         let src = "x+2=5";
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
@@ -403,7 +403,7 @@ mod tests {
         // x^2=9  →  x=3 or x=-3 (Newton from x0=1 → 3)
         let mut tokens = Vec::new();
         let mut arena = Vec::new();
-        let vars = VariableStore::new();
+        let vars = VariableBank::new();
         let src = "x^2=9";
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
@@ -427,7 +427,7 @@ mod tests {
     fn test_too_many_free_vars_error() {
         let mut tokens = Vec::new();
         let mut arena = Vec::new();
-        let vars = VariableStore::new();
+        let vars = VariableBank::new();
         let src = "x+y=5";
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
@@ -436,7 +436,7 @@ mod tests {
 
     #[test]
     fn test_varstore_limit() {
-        let mut vars = VariableStore::new();
+        let mut vars = VariableBank::new();
         // Fill all VARIABLE_LIMIT slots with distinct hashes.
         for i in 0..VARIABLE_LIMIT {
             vars.set(i as u64 + 1, i as f64).unwrap(); // hash 0 is the zero-init sentinel; use 1..=64

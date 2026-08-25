@@ -8,7 +8,7 @@ use expression::evaluation::{
 use expression::lexer::{Token, Tokenizer};
 use expression::parser::{Node, Parser};
 use expression::simplification::simplify;
-use expression::variables::{VariableStore, collect_variables};
+use expression::variables::{VariableBank, collect_variables};
 
 use zmij::Buffer as DtoaBuffer;
 
@@ -357,7 +357,7 @@ struct Pending {
 impl Pending {
     // TODO: improve the docstring and write a doctest
     /// Return the names of variables in this equation that are still unbound.
-    fn free_var_names<'a>(&'a self, vars: &VariableStore) -> Vec<&'a str> {
+    fn free_var_names<'a>(&'a self, vars: &VariableBank) -> Vec<&'a str> {
         collect_variables(&self.arena, self.root)
             .iter()
             .filter(|(h, _, _)| vars.get(*h).is_none())
@@ -367,7 +367,7 @@ impl Pending {
 
     // TODO: improve the docstring and write a doctest
     /// Print the current state of this pending equation relative to vars.
-    fn print_status<W: Write>(&self, out: &mut W, vars: &VariableStore) {
+    fn print_status<W: Write>(&self, out: &mut W, vars: &VariableBank) {
         let free = self.free_var_names(vars);
         if free.is_empty() {
             writeln!(
@@ -425,7 +425,7 @@ fn main() {
     let mut line = String::with_capacity(64);
     let mut tokens: Vec<Token> = Vec::with_capacity(32);
     let mut arena: Vec<Node> = Vec::with_capacity(32);
-    let mut vars = VariableStore::new();
+    let mut vars = VariableBank::new();
     let mut pending: Option<Pending> = None;
     // Hoisted buffer: reused for Pending.src each iteration instead of
     // calling expression.to_string() which allocates a fresh String every time.
@@ -658,7 +658,7 @@ fn main() {
                     }
 
                     Ok(Some((start, end, value))) => {
-                        // x = <number>: stored in VariableStore.
+                        // x = <number>: stored in VariableBank.
                         // Then show how this affects the pending equation.
                         if should_print {
                             let name = &expression[start as usize..end as usize];
