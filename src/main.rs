@@ -16,6 +16,7 @@ use zmij::Buffer as DtoaBuffer;
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
 
+// TODO: write a docstring and doctest
 fn write_tokens<W: Write>(
     out: &mut W,
     tokens: &[Token],
@@ -65,6 +66,7 @@ fn write_tokens<W: Write>(
     Ok(())
 }
 
+// TODO: write a docstring and doctest
 #[inline(always)]
 fn write_value<W: Write>(out: &mut W, v: f64) -> std::io::Result<()> {
     if v.fract() == 0.0 && v.abs() < 1e15 {
@@ -76,6 +78,7 @@ fn write_value<W: Write>(out: &mut W, v: f64) -> std::io::Result<()> {
     }
 }
 
+// TODO: write a docstring and doctest
 fn write_node_compact<W: Write>(out: &mut W, node: &Node, src: &str) -> std::io::Result<()> {
     match node {
         Node::Number(v) => write_value(out, *v),
@@ -133,6 +136,7 @@ fn write_node_compact<W: Write>(out: &mut W, node: &Node, src: &str) -> std::io:
     }
 }
 
+// TODO: write a docstring and doctest
 fn write_node_verbose<W: Write>(out: &mut W, node: &Node, src: &str) -> std::io::Result<()> {
     match node {
         Node::Number(v) => {
@@ -192,6 +196,7 @@ fn write_node_verbose<W: Write>(out: &mut W, node: &Node, src: &str) -> std::io:
     }
 }
 
+// TODO: improve the docstring and write a doctest
 /// Recursively renders the subtree rooted at `idx` into actual expression
 /// text. Unlike `write_node_compact`, which formats a single node and
 /// prints child indices as literal `n{idx}` text (fine for the `show ast`
@@ -294,6 +299,7 @@ fn write_node_recursive<W: Write>(
     }
 }
 
+// TODO: write a docstring and doctest
 #[inline(always)]
 fn write_unary_recursive<W: Write>(
     out: &mut W,
@@ -307,6 +313,7 @@ fn write_unary_recursive<W: Write>(
     write!(out, ")")
 }
 
+// TODO: write a docstring and doctest
 fn write_arena<W: Write>(
     out: &mut W,
     root: u32,
@@ -325,13 +332,14 @@ fn write_arena<W: Write>(
     }
     Ok(())
 }
-
+// TODO: write a docstring
 struct DebugFlags {
     tokens: bool,
     ast: bool,
 }
 
 impl DebugFlags {
+    // TODO: write a docstring
     fn new(verbose: bool) -> Self {
         DebugFlags {
             tokens: true, // on by default
@@ -339,7 +347,7 @@ impl DebugFlags {
         }
     }
 }
-
+// TODO: write a docstring
 struct Pending {
     src: String,
     arena: Vec<Node>,
@@ -347,6 +355,7 @@ struct Pending {
 }
 
 impl Pending {
+    // TODO: improve the docstring and write a doctest
     /// Return the names of variables in this equation that are still unbound.
     fn free_var_names<'a>(&'a self, vars: &VariableStore) -> Vec<&'a str> {
         collect_variables(&self.arena, self.root)
@@ -356,6 +365,7 @@ impl Pending {
             .collect()
     }
 
+    // TODO: improve the docstring and write a doctest
     /// Print the current state of this pending equation relative to vars.
     fn print_status<W: Write>(&self, out: &mut W, vars: &VariableStore) {
         let free = self.free_var_names(vars);
@@ -379,6 +389,7 @@ impl Pending {
 }
 
 fn main() {
+    // TODO: sort things out, group similar things together. TL;DR: make things less messy
     #[cfg(feature = "dhat-heap")]
     let _profiler = dhat::Profiler::new_heap();
 
@@ -610,6 +621,7 @@ fn main() {
         }
 
         arena.clear();
+        // TODO: shorten the following comment
         // Reserve before parsing: node count can never exceed token count, so
         // this single reserve eliminates all the repeated grow-reallocations
         // that dhat PP 1.1.1 flagged (6 allocs across recursive parse_expr calls).

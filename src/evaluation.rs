@@ -1,5 +1,5 @@
 use crate::parser::Node;
-use crate::variables::{VARIABLE_STORE_LIMIT, VariableStore, collect_variables};
+use crate::variables::{VARIABLE_LIMIT, VariableStore, collect_variables};
 
 /// Zero-allocation error type for evaluate.  Only converted to String at the
 /// display boundary, so the Newton hot path never heap-allocates on errors.
@@ -12,6 +12,7 @@ pub enum EvaluationError {
 }
 
 impl EvaluationError {
+    // TODO: write a docstring and doctest
     pub fn to_string_msg(&self) -> String {
         match self {
             EvaluationError::UnboundVariable => "unbound variable".to_string(),
@@ -19,7 +20,7 @@ impl EvaluationError {
         }
     }
 }
-
+// TODO: write a docstring and doctest
 pub fn evaluate(arena: &[Node], idx: u32, vars: &VariableStore) -> Result<f64, EvaluationError> {
     match unsafe { arena.get_unchecked(idx as usize) } {
         Node::Number(v) => Ok(*v),
@@ -78,14 +79,7 @@ pub fn evaluate(arena: &[Node], idx: u32, vars: &VariableStore) -> Result<f64, E
     }
 }
 
-// -----------------------------------------------------------------------
-// Simple variable assignment: `x = <expr with no free vars>`.
-//
-// Recognises Equation(Variable, rhs) where rhs contains no unbound
-// identifiers relative to `vars`. Returns (var_name_start, var_name_end,
-// value) on success, or None if the root is not this shape (caller treats it
-// as a pending equation instead).
-// -----------------------------------------------------------------------
+// TODO: write a docstring and doctest
 pub fn try_simple_assign(
     arena: &[Node],
     root: u32,
@@ -108,6 +102,7 @@ pub fn try_simple_assign(
     Ok(Some((var_start, var_end, value)))
 }
 
+// TODO: write a better version of below:
 // -----------------------------------------------------------------------
 // Evaluate a pending equation against the VariableStore.
 //
@@ -118,7 +113,6 @@ pub fn try_simple_assign(
 //                   print  `unknown = value`.
 //   • >1 free vars → return Err listing which vars still need values.
 // -----------------------------------------------------------------------
-
 pub enum EvaluationResult {
     /// All vars bound: lhs value and rhs value (should be equal for an equation).
     Verified { lhs: f64, rhs: f64 },
@@ -133,6 +127,8 @@ pub enum EvaluationResult {
     /// Expression (no `=`) evaluated to a single value.
     Value(f64),
 }
+
+// TODO: write a docstring and doctest
 
 pub fn evaluate_pending(
     arena: &[Node],
@@ -153,7 +149,7 @@ pub fn evaluate_pending(
     let mut free = collect_variables(arena, root);
     if free.overflowed() {
         return Err(format!(
-            "cannot evaluate: variable limit ({VARIABLE_STORE_LIMIT}) exceeded"
+            "cannot evaluate: variable limit ({VARIABLE_LIMIT}) exceeded"
         ));
     }
     free.retain(|(hash, _, _)| vars.get(*hash).is_none());
@@ -236,9 +232,7 @@ pub fn evaluate_pending(
     }
 }
 
-// -----------------------------------------------------------------------
-// Newton's method: find x such that f(x) ≈ 0.
-// -----------------------------------------------------------------------
+// TODO: write a docstring and doctest
 fn newton(f: &mut impl FnMut(f64) -> Result<f64, String>, x0: f64) -> Result<f64, String> {
     const MAX_ITER: usize = 64;
     const TOL: f64 = 1e-10;
@@ -269,6 +263,7 @@ mod tests {
     use super::*;
     use crate::lexer::Tokenizer;
     use crate::parser::Parser;
+    use crate::variables::VARIABLE_LIMIT;
 
     fn parse_and_eval(src: &str) -> f64 {
         let mut tokens = Vec::new();
@@ -442,12 +437,12 @@ mod tests {
     #[test]
     fn test_varstore_limit() {
         let mut vars = VariableStore::new();
-        // Fill all VARIABLE_STORE_LIMIT slots with distinct hashes.
-        for i in 0..VARIABLE_STORE_LIMIT {
+        // Fill all VARIABLE_LIMIT slots with distinct hashes.
+        for i in 0..VARIABLE_LIMIT {
             vars.set(i as u64 + 1, i as f64).unwrap(); // hash 0 is the zero-init sentinel; use 1..=64
         }
         // One more new key must be rejected.
-        assert!(vars.set(VARIABLE_STORE_LIMIT as u64 + 1, 1.0).is_err());
+        assert!(vars.set(VARIABLE_LIMIT as u64 + 1, 1.0).is_err());
         // Updating an existing key is always ok.
         vars.set(1u64, 99.0).unwrap();
     }

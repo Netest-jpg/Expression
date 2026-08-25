@@ -135,99 +135,51 @@ pub enum Node {
     Equation(u32, u32),
 }
 
-const KW_TABLE_SIZE: usize = 64; // power of 2; 27 entries → ~42% load factor
-const KW_MASK: u64 = (KW_TABLE_SIZE as u64) - 1;
-
-/// (keyword hash, tag). tag identifies which Node variant to build.
-/// hash == 0 marks an empty slot (no real FNV-1a hash of these keywords is 0).
-static KW_TABLE: [(u64, u8); KW_TABLE_SIZE] = build_kw_table();
-
-const fn build_kw_table() -> [(u64, u8); KW_TABLE_SIZE] {
-    let mut t = [(0u64, 0u8); KW_TABLE_SIZE];
-    const ENTRIES: [(u64, u8); 27] = [
-        (KW_SIN, 0),
-        (KW_COS, 1),
-        (KW_TAN, 2),
-        (KW_LN, 3),
-        (KW_LOG, 4),
-        (KW_SQRT, 5),
-        (KW_SEC, 6),
-        (KW_CSC, 7),
-        (KW_COT, 8),
-        (KW_ASIN, 9),
-        (KW_ACOS, 10),
-        (KW_ATAN, 11),
-        (KW_ACSC, 12),
-        (KW_ASEC, 13),
-        (KW_ACOT, 14),
-        (KW_SINH, 15),
-        (KW_COSH, 16),
-        (KW_TANH, 17),
-        (KW_SECH, 18),
-        (KW_CSCH, 19),
-        (KW_COTH, 20),
-        (KW_ASINH, 21),
-        (KW_ACOSH, 22),
-        (KW_ATANH, 23),
-        (KW_ASECH, 24),
-        (KW_ACSCH, 25),
-        (KW_ACOTH, 26),
-    ];
-    let mut i = 0;
-    while i < ENTRIES.len() {
-        let (hash, tag) = ENTRIES[i];
-        let mut slot = (hash & KW_MASK) as usize;
-        while t[slot].0 != 0 {
-            slot = (slot + 1) % KW_TABLE_SIZE;
-        }
-        t[slot] = (hash, tag);
-        i += 1;
-    }
-    t
-}
-
+/// Resolves a function hash to its corresponding [`Node`].
+///
+/// The supplied `arg` is stored in the resulting [`Node`].\
+/// Returns `None` if the supplied `hash` doesn't match any of the supported functions' hash.
+///
+/// # Examples
+///
+/// ```ignore
+/// let node = known_function_kind(KW_SIN, 30);
+///
+/// assert_eq!(node, Some(Node::Sin(30)));
+/// assert_eq!(known_function_kind(0, 30), None);
+/// ```
 #[inline(always)]
 fn known_function_kind(hash: u64, arg: u32) -> Option<Node> {
-    let mut slot = (hash & KW_MASK) as usize;
-    loop {
-        let (h, tag) = unsafe { *KW_TABLE.get_unchecked(slot) };
-        if h == 0 {
-            return None; // empty slot — not found, check this first
-        }
-        if h == hash {
-            return Some(match tag {
-                0 => Node::Sin(arg),
-                1 => Node::Cos(arg),
-                2 => Node::Tan(arg),
-                3 => Node::Ln(arg),
-                4 => Node::Log(arg),
-                5 => Node::Sqrt(arg),
-                6 => Node::Sec(arg),
-                7 => Node::Csc(arg),
-                8 => Node::Cot(arg),
-                9 => Node::Asin(arg),
-                10 => Node::Acos(arg),
-                11 => Node::Atan(arg),
-                12 => Node::Acsc(arg),
-                13 => Node::Asec(arg),
-                14 => Node::Acot(arg),
-                15 => Node::Sinh(arg),
-                16 => Node::Cosh(arg),
-                17 => Node::Tanh(arg),
-                18 => Node::Sech(arg),
-                19 => Node::Csch(arg),
-                20 => Node::Coth(arg),
-                21 => Node::Asinh(arg),
-                22 => Node::Acosh(arg),
-                23 => Node::Atanh(arg),
-                24 => Node::Asech(arg),
-                25 => Node::Acsch(arg),
-                26 => Node::Acoth(arg),
-                _ => unreachable!(),
-            });
-        }
-        slot = (slot + 1) % KW_TABLE_SIZE;
-    }
+    Some(match hash {
+        KW_SIN => Node::Sin(arg),
+        KW_COS => Node::Cos(arg),
+        KW_TAN => Node::Tan(arg),
+        KW_LN => Node::Ln(arg),
+        KW_LOG => Node::Log(arg),
+        KW_SQRT => Node::Sqrt(arg),
+        KW_SEC => Node::Sec(arg),
+        KW_CSC => Node::Csc(arg),
+        KW_COT => Node::Cot(arg),
+        KW_ASIN => Node::Asin(arg),
+        KW_ACOS => Node::Acos(arg),
+        KW_ATAN => Node::Atan(arg),
+        KW_ACSC => Node::Acsc(arg),
+        KW_ASEC => Node::Asec(arg),
+        KW_ACOT => Node::Acot(arg),
+        KW_SINH => Node::Sinh(arg),
+        KW_COSH => Node::Cosh(arg),
+        KW_TANH => Node::Tanh(arg),
+        KW_SECH => Node::Sech(arg),
+        KW_CSCH => Node::Csch(arg),
+        KW_COTH => Node::Coth(arg),
+        KW_ASINH => Node::Asinh(arg),
+        KW_ACOSH => Node::Acosh(arg),
+        KW_ATANH => Node::Atanh(arg),
+        KW_ASECH => Node::Asech(arg),
+        KW_ACSCH => Node::Acsch(arg),
+        KW_ACOTH => Node::Acoth(arg),
+        _ => return None,
+    })
 }
 
 pub struct Parser<'src, 'arena> {
@@ -284,13 +236,36 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         Err(format!("unexpected trailing token: {:?}", self.peek()))
     }
 
-    /// Parses an expression using Pratt parsing with the supplied right-binding power (rbp).
+    /// Parses an expression using Pratt (operator-precedence) parsing with the
+    /// supplied right-binding power (`rbp`).
     ///
     /// Parses the initial expression with [`Self::nud`], then repeatedly consumes
-    /// infix operators whose left-binding power is greater than `rbp`, combining
-    /// each operator and its right-hand operand with [`Self::led`].
+    /// infix operators whose left-binding power ([`LBP`]) is greater than `rbp`,
+    /// combining each operator and its right-hand operand with [`Self::led`].
+    /// Parsing stops as soon as an operator's LBP is `<= rbp`, or when
+    /// [`TokenKind::EOF`] or [`TokenKind::RParen`] is reached (both have an
+    /// LBP of `0`).
     ///
-    /// A lower `rbp` allows operators with lower precedence to be consumed.
+    /// A lower `rbp` allows operators of lower precedence to be consumed;
+    /// this is how precedence climbing and right-associativity (e.g. `^`,
+    /// unary `-`, `=`) are implemented — see the `rbp` values passed from
+    /// [`Self::led`] and [`Self::nud`].
+    ///
+    /// # Example:
+    /// ```rust
+    /// use expression::lexer::Tokenizer;
+    /// use expression::parser::{Node, Parser};
+    /// let mut tokens = Vec::new();
+    /// let mut arena = Vec::new();
+    /// let src = "2+3*4";
+    ///
+    /// Tokenizer::new(src).tokenize(&mut tokens).unwrap();
+    ///
+    /// // `parse()` calls `pratt_parse(0)` internally, so `*` (higher LBP)
+    /// // binds tighter than `+`, producing Add(2, Mul(3, 4)).
+    /// let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
+    /// assert!(matches!(arena[root as usize], Node::Add(_, _)));
+    /// ```
     fn pratt_parse(&mut self, rbp: u8) -> Result<u32, String> {
         let mut left = self.nud()?;
         loop {
@@ -303,26 +278,28 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         Ok(left)
     }
 
-    /// Parses a token in null-denotation (NUD) position.
+    /// The "null denotation" step of Pratt parsing: consumes the current
+    /// token and parses it as the start of an expression (a literal,
+    /// identifier, unary prefix operator, or parenthesized group), with no
+    /// left operand.
     ///
-    /// In Pratt parsing, NUD handles tokens that appear at the beginning of an
-    /// expression, such as literals, identifiers, prefix operators, and
-    /// parenthesized expressions. It consumes the token and returns the index of
-    /// the resulting node in the arena.
+    /// Handles: numbers, identifiers (constants `pi`/`e`, known functions
+    /// like `sin(...)`, implicit multiplication like `x(0)` for unknown
+    /// identifiers, and bare variables), unary minus, and parenthesized
+    /// sub-expressions. Returns an error for any other token, since those
+    /// cannot begin an expression.
     ///
-    /// # Examples
-    ///
-    /// ```text
-    /// 42       → Node::Number(42)
-    /// pi       → Node::Constant(π)
-    /// x        → Node::Variable(...)
-    /// -x       → Node::Neg(...)
-    /// (x + 1)  → Node::Add(...)
-    /// sin(x)   → Node::Sin(...)
+    /// # Example:
+    /// ```ignore
+    /// // nud is private; see the `test_fn_parse` unit test, which exercises
+    /// // nud indirectly through Parser::parse.
+    /// let src = "-3";
+    /// let mut tokens = Vec::new();
+    /// let mut arena = Vec::new();
+    /// Tokenizer::new(src).tokenize(&mut tokens).unwrap();
+    /// let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
+    /// assert!(matches!(arena[root as usize], Node::Neg(_)));
     /// ```
-    ///
-    /// Unknown identifiers followed by `(` are treated as implicit
-    /// multiplication, so `x(2)` becomes `x * 2`.
     #[inline(always)]
     fn nud(&mut self) -> Result<u32, String> {
         let token = self.consume();
@@ -342,10 +319,6 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                     return Ok(self.push(Node::Constant(std::f64::consts::E)));
                 }
 
-                // Cheap check first: only bother resolving which function
-                // this is (if any) when a '(' actually follows. Plain
-                // variables, and identifiers not followed by '(', skip the
-                // hash dispatch entirely.
                 if matches!(self.peek_tokenkind(), TokenKind::LParen) {
                     self.skip(); // eat '('
                     let arg = self.pratt_parse(0)?;
@@ -353,8 +326,6 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                     if let Some(kind) = known_function_kind(hash, arg) {
                         return Ok(self.push(kind));
                     }
-                    // Not a recognized function: identifier '(' ... ')' is
-                    // implicit multiplication, e.g. "x(0)" -> x * (0).
                     let var = self.push(Node::Variable(start, end, hash));
                     return Ok(self.push(Node::Mul(var, arg)));
                 }
@@ -462,13 +433,33 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         self.position += 1;
     }
 
-    /// Parse a binary operator as the LED (left denotation) of an expression.
+    /// The "left denotation" step of Pratt parsing: consumes the current
+    /// (infix) token and combines it with the already-parsed `left` operand
+    /// to build a binary [`Node`], recursively parsing the right-hand side
+    /// via [`Self::pratt_parse`] with the operator's right-binding power.
+    ///
+    /// Handles `=`, `+`, `-`, `*`, `/`, `^`, and implicit multiplication via
+    /// a following `(`, e.g. `2(3+4)` parses as `Mul(2, Add(3, 4))`. `^` and
+    /// `=` recurse with an rbp one less than their LBP, making them
+    /// right-associative; the others recurse with an rbp equal to their LBP,
+    /// making them left-associative. Returns an error for any other token,
+    /// since those cannot appear in infix position.
+    ///
+    /// # Example:
+    /// ```ignore
+    /// // led is private; see the `test_fn_parse` unit test, which exercises
+    /// // led indirectly through Parser::parse.
+    /// let src = "2+3";
+    /// let mut tokens = Vec::new();
+    /// let mut arena = Vec::new();
+    /// Tokenizer::new(src).tokenize(&mut tokens).unwrap();
+    /// let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
+    /// assert!(matches!(arena[root as usize], Node::Add(_, _)));
+    /// ```
     #[inline(always)]
     fn led(&mut self, left: u32) -> Result<u32, String> {
         let token = self.consume();
         match token {
-            // '=' is now a general equation separator — both sides can be
-            // arbitrary expressions. No lhs restriction at parse time.
             Token::Equals => {
                 let right = self.pratt_parse(4)?; // rbp=4 → right-associative
                 Ok(self.push(Node::Equation(left, right)))
@@ -493,9 +484,6 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 let right = self.pratt_parse(29)?;
                 Ok(self.push(Node::Pow(left, right)))
             }
-            // Implicit multiply: "x(0)" -> x * (0). The '(' was just
-            // consumed by advance(); parse the inner expression as a normal
-            // parenthesized group, then multiply.
             Token::LeftParenthesis => {
                 let right = self.pratt_parse(0)?;
                 self.expect_rparen()?;
@@ -549,12 +537,13 @@ mod tests {
 
     #[test]
     fn test_fn_parse() {
+        use std::assert_matches;
         let mut tokens = Vec::new();
         let mut arena = Vec::new();
         let src = "x^2+2*x=2*x-3";
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
-        matches!(arena[root as usize], Node::Equation(_, _));
+        assert_matches!(arena[root as usize], Node::Equation(_, _));
     }
 
     #[test]

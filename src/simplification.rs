@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use crate::parser::Node;
-
+// TODO: read and understand this. Delete it later.
 // Simplify — bottom-up rewrite of the AST arena.
 //
 // Mirrors eval.rs structurally: same recursive shape, same arena-walking
@@ -21,6 +21,7 @@ use crate::parser::Node;
 // function safe to call independently of eval/parser and avoids any
 // need to track liveness or free old nodes.
 
+// TODO: write a docstring and doctest
 pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
     // Clone the kind up front: arena is about to be mutated by recursive
     // calls (which push new nodes), so we can't hold a borrow into it
@@ -175,13 +176,14 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
     }
 }
 
+// TODO: write a docstring and doctest
 #[inline(always)]
 fn push(arena: &mut Vec<Node>, node: Node) -> u32 {
     let idx = arena.len() as u32;
     arena.push(node);
     idx
 }
-
+// TODO: improve the docstring and write a doctest
 /// Returns **Some(f64)** if the node at `idx` is **NodeKind::Number**, else **None**\
 /// Only applies to literal Number nodes — not Constants
 #[inline(always)]
@@ -192,6 +194,7 @@ fn as_number(arena: &[Node], idx: u32) -> Option<f64> {
     }
 }
 
+// TODO: improve the docstring and write a doctest
 /// Shared helper for all unary function nodes: simplify the argument,
 /// constant-fold via `f` if it resolved to a Number, otherwise rebuild
 /// the node (via `ctor`) pointing at the simplified argument.
@@ -209,11 +212,13 @@ fn simplify_unary(
     push(arena, ctor(arg))
 }
 
+// TODO: write a docstring and doctest
 #[inline(always)]
 fn is_zero(arena: &[Node], idx: u32) -> bool {
     matches!(arena[idx as usize], Node::Number(v) if v == 0.0)
 }
 
+// TODO: write a docstring and doctest
 #[inline(always)]
 fn is_one(arena: &[Node], idx: u32) -> bool {
     matches!(arena[idx as usize], Node::Number(v) if v == 1.0)
