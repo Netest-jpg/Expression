@@ -75,6 +75,9 @@ pub fn evaluate(arena: &[Node], idx: u32, vars: &VariableBank) -> Result<f64, Ev
 
         Node::Ln(a) => Ok(evaluate(arena, *a, vars)?.ln()),
         Node::Log(a) => Ok(evaluate(arena, *a, vars)?.log10()),
+        Node::LogBase(base, arg) => {
+            Ok(evaluate(arena, *arg, vars)?.log(evaluate(arena, *base, vars)?))
+        }
         Node::Sqrt(a) => Ok(evaluate(arena, *a, vars)?.sqrt()),
     }
 }
@@ -147,7 +150,7 @@ pub fn evaluate_pending(
 
     // Collect free variables (unbound in VariableBank).
     let mut free = collect_variables(arena, root);
-    if free.overflowed() {
+    if free.is_full() {
         return Err(format!(
             "cannot evaluate: variable limit ({VARIABLE_LIMIT}) exceeded"
         ));
@@ -335,6 +338,21 @@ mod tests {
     #[test]
     fn test_ln() {
         assert!((parse_and_eval("ln(e)") - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_plain_log_is_base_ten() {
+        assert!((parse_and_eval("log(100)") - 2.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_log_base_two() {
+        assert!((parse_and_eval("log_2(8)") - 3.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_log_base_ten() {
+        assert!((parse_and_eval("log_10(100)") - 2.0).abs() < 1e-10);
     }
 
     #[test]

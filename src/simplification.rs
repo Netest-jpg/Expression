@@ -172,6 +172,14 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
 
         Node::Ln(a) => simplify_unary(arena, a, Node::Ln, f64::ln),
         Node::Log(a) => simplify_unary(arena, a, Node::Log, f64::log10),
+        Node::LogBase(base, arg) => {
+            let base = simplify(arena, base);
+            let arg = simplify(arena, arg);
+            if let (Some(base), Some(arg)) = (as_number(arena, base), as_number(arena, arg)) {
+                return push(arena, Node::Number(arg.log(base)));
+            }
+            push(arena, Node::LogBase(base, arg))
+        }
         Node::Sqrt(a) => simplify_unary(arena, a, Node::Sqrt, f64::sqrt),
     }
 }
@@ -350,6 +358,21 @@ mod tests {
     fn test_unary_constant_fold() {
         let (arena, root) = run("sin(0)");
         assert_number(&arena, root, 0.0);
+    }
+
+    #[test]
+    fn test_log_base_constant_fold() {
+        let (arena, root) = run("log_2(8)");
+        assert_number(&arena, root, 3.0);
+    }
+
+    #[test]
+    fn test_symbolic_log_base_stays_symbolic() {
+        let (arena, root) = run("log_b(k)");
+        match arena[root as usize] {
+            Node::LogBase(_, _) => {}
+            ref other => panic!("expected LogBase, got {other:?}"),
+        }
     }
 
     #[test]

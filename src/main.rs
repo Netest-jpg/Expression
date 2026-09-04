@@ -107,6 +107,7 @@ fn write_node_compact<W: Write>(out: &mut W, node: &Node, src: &str) -> std::io:
 
         Node::Ln(a) => write!(out, "ln(n{a})"),
         Node::Log(a) => write!(out, "log(n{a})"),
+        Node::LogBase(base, arg) => write!(out, "log_n{base}(n{arg})"),
         Node::Sqrt(a) => write!(out, "sqrt(n{a})"),
 
         Node::Sec(a) => write!(out, "sec(n{a})"),
@@ -167,6 +168,7 @@ fn write_node_verbose<W: Write>(out: &mut W, node: &Node, src: &str) -> std::io:
 
         Node::Ln(c) => write!(out, "Ln(n{c})"),
         Node::Log(c) => write!(out, "Log(n{c})"),
+        Node::LogBase(base, arg) => write!(out, "LogBase(n{base}, n{arg})"),
         Node::Sqrt(c) => write!(out, "Sqrt(n{c})"),
 
         Node::Sec(c) => write!(out, "Sec(n{c})"),
@@ -270,6 +272,7 @@ fn write_node_recursive<W: Write>(
 
         Node::Ln(a) => write_unary_recursive(out, "ln", *a, arena, src),
         Node::Log(a) => write_unary_recursive(out, "log", *a, arena, src),
+        Node::LogBase(base, arg) => write_log_base_recursive(out, *base, *arg, arena, src),
         Node::Sqrt(a) => write_unary_recursive(out, "sqrt", *a, arena, src),
 
         Node::Sec(a) => write_unary_recursive(out, "sec", *a, arena, src),
@@ -314,6 +317,35 @@ fn write_unary_recursive<W: Write>(
 }
 
 // TODO: write a docstring and doctest
+fn write_log_base_recursive<W: Write>(
+    out: &mut W,
+    base: u32,
+    arg: u32,
+    arena: &[Node],
+    src: &str,
+) -> std::io::Result<()> {
+    write!(out, "log_")?;
+    if is_log_base_atomic(&arena[base as usize]) {
+        write_node_recursive(out, base, arena, src)?;
+    } else {
+        write!(out, "(")?;
+        write_node_recursive(out, base, arena, src)?;
+        write!(out, ")")?;
+    }
+    write!(out, "(")?;
+    write_node_recursive(out, arg, arena, src)?;
+    write!(out, ")")
+}
+
+// TODO: write a docstring and doctest
+fn is_log_base_atomic(node: &Node) -> bool {
+    matches!(
+        node,
+        Node::Number(_) | Node::Constant(_) | Node::Variable(_, _, _)
+    )
+}
+
+// TODO: write a docstring and doctest
 fn write_arena<W: Write>(
     out: &mut W,
     root: u32,
@@ -332,6 +364,7 @@ fn write_arena<W: Write>(
     }
     Ok(())
 }
+
 // TODO: write a docstring
 struct DebugFlags {
     tokens: bool,
@@ -347,6 +380,7 @@ impl DebugFlags {
         }
     }
 }
+
 // TODO: write a docstring
 struct Pending {
     src: String,

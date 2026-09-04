@@ -2,7 +2,7 @@
 use crate::lexer::{
     KW_ACOS, KW_ACOSH, KW_ACOT, KW_ACOTH, KW_ACSC, KW_ACSCH, KW_ASEC, KW_ASECH, KW_ASIN, KW_ASINH,
     KW_ATAN, KW_ATANH, KW_COS, KW_COSH, KW_COT, KW_COTH, KW_CSC, KW_CSCH, KW_E, KW_LN, KW_LOG,
-    KW_PI, KW_SEC, KW_SECH, KW_SIN, KW_SINH, KW_SQRT, KW_TAN, KW_TANH, Token,
+    KW_PI, KW_SEC, KW_SECH, KW_SIN, KW_SINH, KW_SQRT, KW_TAN, KW_TANH, Token, Tokenizer,
 };
 use fast_float2 as fast_float;
 
@@ -130,6 +130,7 @@ pub enum Node {
 
     Ln(u32),
     Log(u32),
+    LogBase(u32, u32),
     Sqrt(u32),
 
     Equation(u32, u32),
@@ -320,6 +321,14 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 }
 
                 if matches!(self.peek_tokenkind(), TokenKind::LParen) {
+                    if self.src[start as usize..end as usize].starts_with("log_") {
+                        let base = self.parse_log_base(start, end)?;
+                        self.skip(); // eat '('
+                        let arg = self.pratt_parse(0)?;
+                        self.expect_rparen()?;
+                        return Ok(self.push(Node::LogBase(base, arg)));
+                    }
+
                     self.skip(); // eat '('
                     let arg = self.pratt_parse(0)?;
                     self.expect_rparen()?;
@@ -373,6 +382,23 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         let token = unsafe { self.tokens.get_unchecked(self.position) }.clone();
         self.position += 1;
         token
+    }
+
+    #[inline(always)]
+    fn parse_log_base(&mut self, start: u32, end: u32) -> Result<u32, String> {
+        let base_start = start + 4;
+        if base_start >= end {
+            return Err("expected base after log_".to_string());
+        }
+
+        let base_src = &self.src[base_start as usize..end as usize];
+        let mut tokens = Vec::new();
+        Tokenizer::new(base_src)
+            .tokenize(&mut tokens)
+            .map_err(|e| format!("invalid log base: {e}"))?;
+        offset_tokens(&mut tokens, base_start);
+
+        Parser::new(&tokens, self.src, self.arena).parse()
     }
 
     /// Stores a [`Node`] in the parser's [`arena`] and
@@ -493,6 +519,18 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         }
     }
 }
+#[inline(always)]
+fn offset_tokens(tokens: &mut [Token], offset: u32) {
+    for token in tokens {
+        match token {
+            Token::Number { start, end } | Token::Identifier { start, end, .. } => {
+                *start += offset;
+                *end += offset;
+            }
+            _ => {}
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -544,6 +582,119 @@ mod tests {
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
         assert_matches!(arena[root as usize], Node::Equation(_, _));
+    }
+
+    #[test]
+    fn test_log_base_number_parse() {
+        let mut tokens = Vec::new();
+        let mut arena = Vec::new();
+        let src = "log_2(8)";
+        Tokenizer::new(src).tokenize(&mut tokens).unwrap();
+        let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
+
+        let Node::LogBase(base, arg) = arena[root as usize] else {
+            panic!("expected LogBase");
+        };
+        assert_eq!(arena[base as usize], Node::Number(2.0));
+        assert_eq!(arena[arg as usize], Node::Number(8.0));
+    }
+
+    #[test]
+    fn test_log_base_variables_parse() {
+        let mut tokens = Vec::new();
+        let mut arena = Vec::new();
+        let src = "log_b(k)";
+        Tokenizer::new(src).tokenize(&mut tokens).unwrap();
+        let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
+
+        let Node::LogBase(base, arg) = arena[root as usize] else {
+            panic!("expected LogBase");
+        };
+        match arena[base as usize] {
+            Node::Variable(start, end, _) => assert_eq!(&src[start as usize..end as usize], "b"),
+            ref other => panic!("expected base variable, got {other:?}"),
+        }
+        match arena[arg as usize] {
+            Node::Variable(start, end, _) => assert_eq!(&src[start as usize..end as usize], "k"),
+            ref other => panic!("expected argument variable, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_log_base_symbolic_parse() {
+        let mut tokens = Vec::new();
+        let mut arena = Vec::new();
+        let src = "log_x(k)";
+        Tokenizer::new(src).tokenize(&mut tokens).unwrap();
+        let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
+
+        assert!(matches!(arena[root as usize], Node::LogBase(_, _)));
+    }
+
+    #[test]
+    fn test_plain_log_stays_base_ten_parse() {
+        let mut tokens = Vec::new();
+        let mut arena = Vec::new();
+        let src = "log(100)";
+        Tokenizer::new(src).tokenize(&mut tokens).unwrap();
+        let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
+
+        assert!(matches!(arena[root as usize], Node::Log(_)));
+    }
+
+    #[test]
+    fn test_empty_log_base_errors() {
+        let mut tokens = Vec::new();
+        let mut arena = Vec::new();
+        let src = "log_(8)";
+        Tokenizer::new(src).tokenize(&mut tokens).unwrap();
+        let err = Parser::new(&tokens, src, &mut arena).parse().unwrap_err();
+
+        assert!(err.contains("expected base after log_"));
+    }
+
+    #[test]
+    fn test_grouped_log_base_errors() {
+        let mut tokens = Vec::new();
+        let mut arena = Vec::new();
+        let src = "log_(2+1)(27)";
+        Tokenizer::new(src).tokenize(&mut tokens).unwrap();
+        let err = Parser::new(&tokens, src, &mut arena).parse().unwrap_err();
+
+        assert!(err.contains("expected base after log_"));
+    }
+
+    #[test]
+    fn test_empty_log_argument_errors() {
+        let mut tokens = Vec::new();
+        let mut arena = Vec::new();
+        let src = "log_2()";
+        Tokenizer::new(src).tokenize(&mut tokens).unwrap();
+        let err = Parser::new(&tokens, src, &mut arena).parse().unwrap_err();
+
+        assert!(err.contains("unexpected token in expression"));
+    }
+
+    #[test]
+    fn test_bare_log_base_remains_variable() {
+        let mut tokens = Vec::new();
+        let mut arena = Vec::new();
+        let src = "log_2";
+        Tokenizer::new(src).tokenize(&mut tokens).unwrap();
+        let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
+
+        assert!(matches!(arena[root as usize], Node::Variable(_, _, _)));
+    }
+
+    #[test]
+    fn test_log_base_without_parentheses_errors() {
+        let mut tokens = Vec::new();
+        let mut arena = Vec::new();
+        let src = "log_2 8";
+        Tokenizer::new(src).tokenize(&mut tokens).unwrap();
+        let err = Parser::new(&tokens, src, &mut arena).parse().unwrap_err();
+
+        assert!(err.contains("unexpected trailing token"));
     }
 
     #[test]
