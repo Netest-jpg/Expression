@@ -46,7 +46,6 @@ enum TokenKind {
 /// [`TokenKind::EOF`] = 0
 /// \
 /// [`TokenKind::Equals`] = 5
-
 static LBP: [u8; TokenKind::_Count as usize] = {
     let mut t = [0u8; TokenKind::_Count as usize];
     t[TokenKind::Equals as usize] = 5; // lowest infix; right-assoc: rbp = 4
@@ -234,8 +233,22 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     }
     #[cold]
     fn unexpected_trailing_token(&self) -> Result<u32, String> {
-        Err(format!("unexpected trailing token: {:?}", self.peek()))
+        Err(format!("Unexpected trailing token: {:?}", self.peek()))
+        // Err(format!(
+        //     "Unexpected trailing token: {:?}",
+        //     self.token_text(self.peek())
+        // ))
     }
+
+    // #[inline(always)]
+    // fn token_text(&self, token: &Token) -> &str {
+    //     match token {
+    //         Token::Number { start, end } | Token::Identifier { start, end, .. } => unsafe {
+    //             self.src.get_unchecked(*start as usize..*end as usize)
+    //         },
+    //         _ => "",
+    //     }
+    // }
 
     /// Parses an expression using Pratt (operator-precedence) parsing with the
     /// supplied right-binding power (`rbp`).
@@ -353,7 +366,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 Ok(inner)
             }
 
-            other => Err(format!("unexpected token in expression: {:?}", other)),
+            other => Err(format!("Unexpected token in expression: {:?}", other)),
         }
     }
 
@@ -388,14 +401,14 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     fn parse_log_base(&mut self, start: u32, end: u32) -> Result<u32, String> {
         let base_start = start + 4;
         if base_start >= end {
-            return Err("expected base after log_".to_string());
+            return Err("Expected base after log_".to_string());
         }
 
         let base_src = &self.src[base_start as usize..end as usize];
         let mut tokens = Vec::new();
         Tokenizer::new(base_src)
             .tokenize(&mut tokens)
-            .map_err(|e| format!("invalid log base: {e}"))?;
+            .map_err(|e| format!("Invalid log base: {e}"))?;
         offset_tokens(&mut tokens, base_start);
 
         Parser::new(&tokens, self.src, self.arena).parse()
@@ -438,7 +451,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     #[inline(always)]
     fn expect_rparen(&mut self) -> Result<(), String> {
         if self.peek_tokenkind() != TokenKind::RParen {
-            return Err(format!("expected ')', found {:?}", self.peek()));
+            return Err(format!("Expected ')', found {:?}", self.peek()));
         }
         self.skip();
         Ok(())
@@ -515,7 +528,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 self.expect_rparen()?;
                 Ok(self.push(Node::Mul(left, right)))
             }
-            other => Err(format!("unexpected token: {:?}", other)),
+            other => Err(format!("Unexpected token: {:?}", other)),
         }
     }
 }
@@ -593,7 +606,7 @@ mod tests {
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
 
         let Node::LogBase(base, arg) = arena[root as usize] else {
-            panic!("expected LogBase");
+            panic!("Expected LogBase");
         };
         assert_eq!(arena[base as usize], Node::Number(2.0));
         assert_eq!(arena[arg as usize], Node::Number(8.0));
@@ -608,15 +621,15 @@ mod tests {
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
 
         let Node::LogBase(base, arg) = arena[root as usize] else {
-            panic!("expected LogBase");
+            panic!("Expected LogBase");
         };
         match arena[base as usize] {
             Node::Variable(start, end, _) => assert_eq!(&src[start as usize..end as usize], "b"),
-            ref other => panic!("expected base variable, got {other:?}"),
+            ref other => panic!("Expected base variable, got {other:?}"),
         }
         match arena[arg as usize] {
             Node::Variable(start, end, _) => assert_eq!(&src[start as usize..end as usize], "k"),
-            ref other => panic!("expected argument variable, got {other:?}"),
+            ref other => panic!("Expected argument variable, got {other:?}"),
         }
     }
 
@@ -650,7 +663,7 @@ mod tests {
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let err = Parser::new(&tokens, src, &mut arena).parse().unwrap_err();
 
-        assert!(err.contains("expected base after log_"));
+        assert!(err.contains("Expected base after log_"));
     }
 
     #[test]
@@ -661,7 +674,7 @@ mod tests {
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let err = Parser::new(&tokens, src, &mut arena).parse().unwrap_err();
 
-        assert!(err.contains("expected base after log_"));
+        assert!(err.contains("Expected base after log_"));
     }
 
     #[test]
@@ -672,7 +685,7 @@ mod tests {
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let err = Parser::new(&tokens, src, &mut arena).parse().unwrap_err();
 
-        assert!(err.contains("unexpected token in expression"));
+        assert!(err.contains("Unexpected token in expression"));
     }
 
     #[test]
@@ -694,7 +707,7 @@ mod tests {
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let err = Parser::new(&tokens, src, &mut arena).parse().unwrap_err();
 
-        assert!(err.contains("unexpected trailing token"));
+        assert!(err.contains("Unexpected trailing token"));
     }
 
     #[test]

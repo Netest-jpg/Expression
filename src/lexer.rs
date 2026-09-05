@@ -188,6 +188,7 @@ pub enum Token {
 }
 
 impl Token {
+    //TODO: update the docstring
     /// Returns the raw source text for the corresponding number token.\
     /// Panics if called on any other token variant.
     /// # Example:
@@ -207,11 +208,12 @@ impl Token {
     #[inline(always)]
     pub fn raw<'src>(&self, src: &'src str) -> &'src str {
         match self {
-            Token::Number { start, end } => &src[*start as usize..*end as usize],
+            Token::Number { start, end } => unsafe { Self::slice_unchecked(src, *start, *end) },
             _ => panic!("Token::raw called on non-Number token"),
         }
     }
 
+    //TODO: Update docstring
     /// Returns the raw source text for the corresponding identifier token.\
     /// Panics if called on any other token variant.
     /// # Example:
@@ -231,7 +233,9 @@ impl Token {
     #[inline(always)]
     pub fn name<'src>(&self, src: &'src str) -> &'src str {
         match self {
-            Token::Identifier { start, end, .. } => &src[*start as usize..*end as usize],
+            Token::Identifier { start, end, .. } => unsafe {
+                Self::slice_unchecked(src, *start, *end)
+            },
             _ => panic!("Token::name called on non-Identifier token"),
         }
     }
@@ -248,7 +252,7 @@ impl Token {
     /// ```
     #[inline(always)]
     pub fn as_f64(&self, src: &str) -> f64 {
-        fast_float::parse::<f64, &str>(self.raw(src)).expect("invalid number")
+        fast_float::parse::<f64, &str>(self.raw(src)).expect("Invalid number")
     }
 
     /// Returns the raw source text as Some() for the corresponding identifier token.\
@@ -263,9 +267,16 @@ impl Token {
     #[inline(always)]
     pub fn as_ident<'src>(&self, src: &'src str) -> Option<&'src str> {
         match self {
-            Token::Identifier { start, end, .. } => Some(&src[*start as usize..*end as usize]),
+            Token::Identifier { start, end, .. } => {
+                Some(unsafe { Self::slice_unchecked(src, *start, *end) })
+            }
             _ => None,
         }
+    }
+
+    #[inline(always)]
+    unsafe fn slice_unchecked<'src>(src: &'src str, start: u32, end: u32) -> &'src str {
+        unsafe { src.get_unchecked(start as usize..end as usize) }
     }
 }
 
@@ -328,6 +339,7 @@ impl<'src> Tokenizer<'src> {
     /// assert_eq!(tokens[4].raw(src), "3");
     /// ```
     pub fn tokenize(&mut self, tokens: &mut Vec<Token>) -> Result<(), String> {
+        self.pos = 0;
         tokens.clear();
         // Typical token is 2-3 chars; src.len()/2+2 avoids the large
         // over-allocation that src.len()+1 causes for identifier-heavy input.
