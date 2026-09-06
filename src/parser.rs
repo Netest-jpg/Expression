@@ -65,14 +65,6 @@ pub enum Node {
 /// The supplied `arg` is stored in the resulting `Node`.
 ///
 /// Returns `None` if the supplied `hash` doesn't match any of the supported functions' hash.
-///
-/// # Examples
-/// ```ignore
-/// let node = known_function_kind(KW_SIN, 30);
-///
-/// assert_eq!(node, Some(Node::Sin(30)));
-/// assert_eq!(known_function_kind(0, 30), None);
-/// ```
 #[inline(always)]
 fn known_function_kind(hash: u64, arg: u32) -> Option<Node> {
     Some(match hash {
@@ -124,9 +116,13 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         }
     }
 
-    /// Parses the entire expression and returns the root node.
+    /// Parses the full token stream into a single expression, consuming the parser.
+    /// Returns the arena index of the root node.
     ///
-    /// Returns an `Err` if the last `Token` is not `Token::EndOfFile`.
+    /// # Errors:
+    /// Returns `Err` if the tokens don't form a valid expression or if any non-`Token::EndOfFile` tokens remain after the expression is parsed.
+    ///
+    /// E.g., "2+3 4" - here, 4 is a trailing input with no connecting operator
     ///
     /// # Example:
     /// ```rust
@@ -136,9 +132,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     /// let mut tokens = Vec::new();
     /// let mut arena = Vec::new();
     /// let src = "x^2+2*x=2*x-3";
-    ///
     /// Tokenizer::new(src).tokenize(&mut tokens).unwrap();
-    ///
     /// let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
     ///
     /// assert!(matches!(arena[root as usize], Node::Equation(_, _)));
@@ -162,41 +156,25 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     // #[inline(always)]
     // fn token_text(&self, token: &Token) -> &str {
     //     match token {
-    //         Token::Number { start, end } | Token::Identifier { start, end, .. } => unsafe {
+    //         Token::Number { start, end } | Token::Variable { start, end, .. } => unsafe {
     //             self.src.get_unchecked(*start as usize..*end as usize)
     //         },
     //         _ => "",
     //     }
     // }
 
-    /// Parses an expression using Pratt (operator-precedence) parsing with the
-    /// supplied right-binding power (`rbp`).
+    /// Parses an expression, consuming infix operators while their `lbp`
+    /// exceeds `rbp`.
     ///
-    /// Parses the initial expression with [`Self::nud`], then repeatedly consumes
-    /// infix operators whose left-binding power ([`LBP`]) is greater than `rbp`,
-    /// combining each operator and its right-hand operand with [`Self::led`].
-    /// Parsing stops as soon as an operator's LBP is `<= rbp`, or when
-    /// [`TokenKind::EOF`] or [`TokenKind::RParen`] is reached (both have an
-    /// LBP of `0`).
+    /// `rbp` is the minimum binding power the caller will accept — pass the
+    /// current operator's `lbp` for left-associative recursion, or a value
+    /// less than its `lbp` for right-associative recursion (see
+    /// [`Token::rbp`]). Pass `0` to parse a full expression with no upper
+    /// bound on what gets consumed.
     ///
-    /// A lower `rbp` allows operators of lower precedence to be consumed;
-    /// this is how precedence climbing and right-associativity (e.g. `^`,
-    /// unary `-`, `=`) are implemented — see the `rbp` values passed from
-    /// [`Self::led`] and [`Self::nud`].
-    ///
-    /// # Example:
-    /// ```rust
-    /// use expression::lexer::Tokenizer;
-    /// use expression::parser::{Node, Parser};
-    /// let mut tokens = Vec::new();
-    /// let mut arena = Vec::new();
-    /// let src = "2+3*4";
-    ///
-    /// Tokenizer::new(src).tokenize(&mut tokens).unwrap();
-    ///
-    /// let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
-    /// assert!(matches!(arena[root as usize], Node::Add(_, _)));
-    /// ```
+    /// # Errors
+    /// Returns `Err` if the token stream doesn't form a valid expression
+    /// from the current position.
     fn pratt_parse(&mut self, rbp: u8) -> Result<u32, String> {
         let mut left = self.nud()?;
         loop {
@@ -209,28 +187,31 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         Ok(left)
     }
 
-    /// The "null denotation" step of Pratt parsing: consumes the current
-    /// token and parses it as the start of an expression (a literal,
-    /// identifier, unary prefix operator, or parenthesized group), with no
-    /// left operand.
+    /// Parses a primary expression: a number, variable/constant, unary minus,
+    /// function call, implicit-multiply call, or parenthesized group.
     ///
-    /// Handles: numbers, identifiers (constants `pi`/`e`, known functions
-    /// like `sin(...)`, implicit multiplication like `x(0)` for unknown
-    /// identifiers, and bare variables), unary minus, and parenthesized
-    /// sub-expressions. Returns an error for any other token, since those
-    /// cannot begin an expression.
+    /// Handles:
+    /// 1. `Token::Number` — parses the literal into `Node::Number`.
     ///
-    /// # Example:
-    /// ```ignore
-    /// // nud is private; see the `test_fn_parse` unit test, which exercises
-    /// // nud indirectly through Parser::parse.
-    /// let src = "-3";
-    /// let mut tokens = Vec::new();
-    /// let mut arena = Vec::new();
-    /// Tokenizer::new(src).tokenize(&mut tokens).unwrap();
-    /// let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
-    /// assert!(matches!(arena[root as usize], Node::Neg(_)));
-    /// ```
+    /// 2. `Token::Variable` — resolves as follows:
+    ///   - `pi` / `e` → the corresponding constant.
+    ///   - followed by `(`:
+    ///     - name starts with `log_` → parses a `log_<base>(...)` call.
+    ///     - name matches a known function (e.g. `sin`) → a function call.
+    ///     - otherwise → implicit multiplication (`x(3)` → `x*3`).
+    ///   - otherwise → a plain variable reference.
+    ///
+    /// 3. `Token::Minus` — unary negation, binds tighter than `*` or `/` but
+    ///   looser than `^` (see the `25` binding power).
+    ///
+    /// 4. `Token::LeftParenthesis` — parses a fully parenthesized sub-expression.
+    ///
+    /// # Errors
+    /// Returns `Err` if:
+    /// 1. The current token can't start an expression (e.g. an infix operator
+    ///   or `EndOfFile` in prefix position).
+    /// 2. A number literal fails to parse.
+    /// 3. A `log_` call's base is invalid.
     #[inline(always)]
     fn nud(&mut self) -> Result<u32, String> {
         let token = self.consume();
@@ -242,7 +223,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 Ok(self.push(Node::Number(value)))
             }
 
-            Token::Identifier { start, end, hash } => {
+            Token::Variable { start, end, hash } => {
                 if hash == KW_PI {
                     return Ok(self.push(Node::Constant(std::f64::consts::PI)));
                 }
@@ -254,7 +235,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                     if self.src[start as usize..end as usize].starts_with("log_") {
                         let base = self.parse_log_base(start, end)?;
                         self.skip(); // eat '('
-                        let arg = self.pratt_parse(token.rbp())?;
+                        let arg = self.pratt_parse(0)?;
                         self.expect_rparen()?;
                         return Ok(self.push(Node::LogBase(base, arg)));
                     }
@@ -265,6 +246,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                     if let Some(kind) = known_function_kind(hash, arg) {
                         return Ok(self.push(kind));
                     }
+
                     let var = self.push(Node::Variable(start, end, hash));
                     return Ok(self.push(Node::Mul(var, arg)));
                 }
@@ -287,26 +269,12 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         }
     }
 
-    /// Returns the token at the current [`position`] and advances [`position`] by 1.
+    /// Returns `Token` at the current `position` and advances `position` by 1.
     ///
     /// # Safety
-    ///
     /// This function does not perform bounds checking.
-    /// The caller must ensure that [`position`] is less than the number of tokens.
+    /// The caller must ensure that `position` is less than the number of tokens.
     /// Otherwise, this function invokes undefined behavior.
-    ///
-    /// # Example:
-    /// ```ignore
-    /// // consume and position are private; see the `test_fn_consume` unit test.
-    /// let src = "2x+3";
-    /// let mut tokens = Vec::new();
-    /// let mut arena = Vec::new();
-    /// Tokenizer::new(src).tokenize(&mut tokens).unwrap();
-    /// let mut parser = Parser::new(&tokens, src, &mut arena);
-    ///
-    /// assert_eq!(parser.consume(), Token::Number { start: 0, end: 1 });
-    /// assert_eq!(parser.position, 1);
-    /// ```
     #[inline(always)]
     fn consume(&mut self) -> Token {
         let token = unsafe { self.tokens.get_unchecked(self.position) }.clone();
@@ -314,6 +282,19 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         token
     }
 
+    /// Parses the base out of a `log_<base>` identifier and returns its
+    /// arena index.
+    ///
+    /// `start`/`end` are the byte range of the full identifier (e.g. `log_2`);
+    /// the base is everything after the `log_` prefix (4 bytes). The base
+    /// text is re-tokenized and parsed as its own expression, with resulting
+    /// token offsets adjusted to stay consistent with the original source
+    /// positions (so error messages point at the right place in `self.src`).
+    ///
+    /// # Errors
+    /// - Returns `Err` if there's no text after the `log_` prefix.
+    /// - Returns `Err` if the base fails to tokenize.
+    /// - Returns `Err` if the base fails to parse as a valid expression.
     #[inline(always)]
     fn parse_log_base(&mut self, start: u32, end: u32) -> Result<u32, String> {
         let base_start = start + 4;
@@ -331,22 +312,9 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         Parser::new(&tokens, self.src, self.arena).parse()
     }
 
-    /// Stores a [`Node`] in the parser's [`arena`] and
-    /// returns the index of the newly appended [`Node`].
+    /// Stores a `Node` in the parser's `arena` and returns the index of the newly appended `Node`.
     ///
-    /// # Example:
-    /// ```ignore
-    /// // push and arena are private; see the `test_fn_push` unit test.
-    /// let src = "";
-    /// let mut tokens = Vec::new();
-    /// let mut arena = Vec::new();
-    /// Tokenizer::new(src).tokenize(&mut tokens).unwrap();
-    /// let mut parser = Parser::new(&tokens, src, &mut arena);
-    ///
-    /// let index = parser.push(Node::Number(42.0));
-    /// assert_eq!(index, 0);
-    /// assert_eq!(parser.arena.len(), 1);
-    /// ```
+    /// Arena indices are `u32`; parsing an expression that produces more than `u32::MAX` nodes will silently wrap.
     #[inline(always)]
     fn push(&mut self, node: Node) -> u32 {
         let index = self.arena.len() as u32;
@@ -354,8 +322,10 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         index
     }
 
-    /// Expect the current token to be an rparen.\
-    /// Returns an `Error` if it is not [`TokenKind::RParen`] and skips if it is.
+    /// Consumes the current token if it's `Token::RightParenthesis`
+    ///
+    /// # Errors
+    /// Returns `Err` if the current token is not `Token::RightParenthesis`.
     #[inline(always)]
     fn expect_rparen(&mut self) -> Result<(), String> {
         if !matches!(self.peek(), Token::RightParenthesis) {
@@ -365,10 +335,11 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         Ok(())
     }
 
-    /// Returns [`Token`] at the current [`position`].
+    /// Returns `Token` at the current `position`.
+    ///
     /// # Safety
     /// This function doesn't perform bounds checking.
-    /// The caller must ensure that [`position`] must be less than the number of tokens.
+    /// The caller must ensure that `position` must be less than the number of tokens.
     #[inline(always)]
     fn peek(&self) -> &Token {
         unsafe { self.tokens.get_unchecked(self.position) }
@@ -380,29 +351,21 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         self.position += 1;
     }
 
-    /// The "left denotation" step of Pratt parsing: consumes the current
-    /// (infix) token and combines it with the already-parsed `left` operand
-    /// to build a binary [`Node`], recursively parsing the right-hand side
-    /// via [`Self::pratt_parse`] with the operator's right-binding power.
+    /// Parses the infix continuation of an expression whose left operand is
+    /// already parsed, using the just-consumed token as the operator.
     ///
-    /// Handles `=`, `+`, `-`, `*`, `/`, `^`, and implicit multiplication via
-    /// a following `(`, e.g. `2(3+4)` parses as `Mul(2, Add(3, 4))`. `^` and
-    /// `=` recurse with an rbp one less than their LBP, making them
-    /// right-associative; the others recurse with an rbp equal to their LBP,
-    /// making them left-associative. Returns an error for any other token,
-    /// since those cannot appear in infix position.
+    /// Handles:
+    /// - `Token::Equals` — right-associative; builds `Node::Equation`.
+    /// - `Token::Plus` / `Token::Minus` / `Token::Multiply` / `Token::Divide`
+    ///   — left-associative; build the corresponding arithmetic node.
+    /// - `Token::Exponent` — right-associative; builds `Node::Pow`.
+    /// - `Token::LeftParenthesis` — implicit multiplication (`x(3)` → `x*3`);
+    ///   parses the parenthesized right operand and builds `Node::Mul`.
     ///
-    /// # Example:
-    /// ```ignore
-    /// // led is private; see the `test_fn_parse` unit test, which exercises
-    /// // led indirectly through Parser::parse.
-    /// let src = "2+3";
-    /// let mut tokens = Vec::new();
-    /// let mut arena = Vec::new();
-    /// Tokenizer::new(src).tokenize(&mut tokens).unwrap();
-    /// let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
-    /// assert!(matches!(arena[root as usize], Node::Add(_, _)));
-    /// ```
+    /// # Errors
+    /// - The right operand fails to parse.
+    /// - `Token::LeftParenthesis` is not followed by a matching `)`.
+    /// - The consumed token isn't a valid infix operator.
     #[inline(always)]
     fn led(&mut self, left: u32) -> Result<u32, String> {
         let token = self.consume();
@@ -440,11 +403,21 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         }
     }
 }
+
+/// Shifts every `Token::Number` and `Token::Variable`'s `start`/`end`
+/// span by `offset`, in place.
+///
+/// Used after tokenizing a source substring (e.g. a `log_<base>` slice)
+/// so its tokens' spans line up with the original full source instead
+/// of being relative to the substring.
+///
+/// Tokens with no span (operators, parentheses, `EndOfFile`, etc.) are
+/// left unchanged.
 #[inline(always)]
 fn offset_tokens(tokens: &mut [Token], offset: u32) {
     for token in tokens {
         match token {
-            Token::Number { start, end } | Token::Identifier { start, end, .. } => {
+            Token::Number { start, end } | Token::Variable { start, end, .. } => {
                 *start += offset;
                 *end += offset;
             }
@@ -452,6 +425,8 @@ fn offset_tokens(tokens: &mut [Token], offset: u32) {
         }
     }
 }
+
+// Error Handles
 #[cold]
 #[inline(never)]
 fn invalid_number_error(raw: &str, e: &impl std::fmt::Display) -> String {

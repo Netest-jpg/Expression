@@ -67,7 +67,7 @@ static DISPATCH: [Dispatch; 256] = build_dispatch_table();
 
 /// Builds a bitset of 32 bytes **at compile-time**, where each byte represents 8 characters.
 ///
-/// Each bit in the byte is set to **1** if the corresponding character is an identifier character.
+/// Each bit in the byte is set to **1** if the corresponding character is an Variable character.
 /// # Allowed characters:
 /// - `0` .. `9`
 /// - `A` .. `Z`
@@ -99,7 +99,7 @@ const fn build_ident_table() -> [u8; 32] {
     t
 }
 
-/// Takes in a u8 and returns a boolean indicating whether it is a valid identifier character.
+/// Takes in a u8 and returns a boolean indicating whether it is a valid Variable character.
 #[inline(always)]
 fn is_ident_char(c: u8) -> bool {
     unsafe { (*IS_IDENT.get_unchecked(c as usize / 8) >> (c % 8)) & 1 != 0 }
@@ -111,7 +111,7 @@ fn is_ident_char(c: u8) -> bool {
 enum Dispatch {
     Whitespace,
     Number,
-    Identifier,
+    Variable,
     Plus,
     Minus,
     Multiply,
@@ -147,15 +147,15 @@ const fn build_dispatch_table() -> [Dispatch; 256] {
     t[b'.' as usize] = Dispatch::Number;
     let mut c = b'a';
     while c <= b'z' {
-        t[c as usize] = Dispatch::Identifier;
+        t[c as usize] = Dispatch::Variable;
         c += 1;
     }
     let mut c = b'A';
     while c <= b'Z' {
-        t[c as usize] = Dispatch::Identifier;
+        t[c as usize] = Dispatch::Variable;
         c += 1;
     }
-    t[b'_' as usize] = Dispatch::Identifier;
+    t[b'_' as usize] = Dispatch::Variable;
     t[b'+' as usize] = Dispatch::Plus;
     t[b'-' as usize] = Dispatch::Minus;
     t[b'*' as usize] = Dispatch::Multiply;
@@ -175,7 +175,7 @@ pub enum Token {
         end: u32,
     },
     /// Byte range in the source. Call `.name(src)` when needed.
-    Identifier {
+    Variable {
         start: u32,
         end: u32,
         hash: u64,
@@ -205,7 +205,7 @@ impl Token {
             Token::Multiply | Token::Divide => 20,
             Token::Exponent => 30,
             Token::LeftParenthesis => 20, // implicit multiply x(0) -> x*0
-            // Number, Identifier, RightParenthesis, EndOfFile
+            // Number, Variable, RightParenthesis, EndOfFile
             _ => 0,
         }
     }
@@ -221,7 +221,7 @@ impl Token {
             Token::Plus | Token::Minus => 10,
             Token::Multiply | Token::Divide => 20,
             Token::Exponent => 29,
-            // Number, Identifier, LeftParenthesis, RightParenthesis, EndOfFile
+            // Number, Variable, LeftParenthesis, RightParenthesis, EndOfFile
             _ => 0,
         }
     }
@@ -258,10 +258,10 @@ impl Token {
         }
     }
 
-    /// Returns the raw source text for the corresponding identifier token.
+    /// Returns the raw source text for the corresponding Variable token.
     ///
     /// # Panics
-    /// Panics if called on any `Token` variants other than `Token::Identifier`.
+    /// Panics if called on any `Token` variants other than `Token::Variable`.
     ///
     /// # Safety
     /// Uses `slice_unchecked` internally which skips the UTF-8 boundary and bounds check. It is sound here because `start` & `end` are byte offsets produced by tokenizer from this exact `src`, so they will always be within bounds.
@@ -272,7 +272,7 @@ impl Token {
     /// ```rust
     /// use expression::lexer::Token;
     /// let src = "2x+3";
-    /// let token = Token::Identifier { start: 1, end: 2, hash: 0 };
+    /// let token = Token::Variable { start: 1, end: 2, hash: 0 };
     /// assert_eq!(token.name(src), "x");
     /// ```
     ///
@@ -285,10 +285,10 @@ impl Token {
     #[inline(always)]
     pub fn name<'src>(&self, src: &'src str) -> &'src str {
         match self {
-            Token::Identifier { start, end, .. } => unsafe {
+            Token::Variable { start, end, .. } => unsafe {
                 Self::slice_unchecked(src, *start, *end)
             },
-            _ => panic!("Token::name called on non-Identifier token"),
+            _ => panic!("Token::name called on non-Variable token"),
         }
     }
 
@@ -308,7 +308,7 @@ impl Token {
         fast_float::parse::<f64, &str>(self.raw(src)).expect("Invalid number")
     }
 
-    /// Returns the raw source text for a `Token::Identifier`.
+    /// Returns the raw source text for a `Token::Variable`.
     ///
     /// Returns `None` if called on any other token variant.
     ///
@@ -321,13 +321,13 @@ impl Token {
     /// ```rust
     /// use expression::lexer::Token;
     /// let src = "2x+3";
-    /// let token = Token::Identifier { start: 1, end: 2, hash: 0 };
+    /// let token = Token::Variable { start: 1, end: 2, hash: 0 };
     /// assert_eq!(token.as_ident(src), Some("x"));
     /// ```
     #[inline(always)]
     pub fn as_ident<'src>(&self, src: &'src str) -> Option<&'src str> {
         match self {
-            Token::Identifier { start, end, .. } => {
+            Token::Variable { start, end, .. } => {
                 Some(unsafe { Self::slice_unchecked(src, *start, *end) })
             }
             _ => None,
@@ -353,7 +353,7 @@ impl std::fmt::Debug for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Token::Number { start, end } => write!(f, "Number([{start}..{end}])"),
-            Token::Identifier { start, end, .. } => write!(f, "Identifier([{start}..{end}])"),
+            Token::Variable { start, end, .. } => write!(f, "Variable([{start}..{end}])"),
             Token::Plus => write!(f, "Plus"),
             Token::Minus => write!(f, "Minus"),
             Token::Multiply => write!(f, "Multiply"),
@@ -384,10 +384,10 @@ impl<'src> Tokenizer<'src> {
     ///
     /// `Token::EndOfFile` is always appended as the final token - marking the end of input.
     ///
-    /// A number immediately followed by an identifier with no operator between
+    /// A number immediately followed by an Variable with no operator between
     /// them implicitly inserts `Token::Multiply` between them.
     ///
-    /// E.g., "2x" -> (`Token::Number`, `Token::Multiply`, `Token::Identifier`)
+    /// E.g., "2x" -> (`Token::Number`, `Token::Multiply`, `Token::Variable`)
     ///
     /// # Errors
     /// Returns `Err` if the source contains a byte that isn't valid `Token` variant.
@@ -404,7 +404,7 @@ impl<'src> Tokenizer<'src> {
     /// assert_eq!(tokens.len(), 6);
     /// assert_eq!(tokens[0], Token::Number { start: 0, end: 1 });
     /// assert_eq!(tokens[1], Token::Multiply);
-    /// assert!(matches!(tokens[2], Token::Identifier { .. }));
+    /// assert!(matches!(tokens[2], Token::Variable { .. }));
     /// assert_eq!(tokens[3], Token::Plus);
     /// assert_eq!(tokens[4], Token::Number { start: 3, end: 4 });
     /// assert_eq!(tokens[5], Token::EndOfFile);
@@ -413,7 +413,7 @@ impl<'src> Tokenizer<'src> {
         self.pos = 0;
         tokens.clear();
         // Typical token is 2-3 chars; src.len()/2+2 avoids the large
-        // over-allocation that src.len()+1 causes for identifier-heavy input.
+        // over-allocation that src.len()+1 causes for Variable-heavy input.
         let hint = self.src.len() / 2 + 2;
         if tokens.capacity() < hint {
             tokens.reserve(hint - tokens.len());
@@ -434,7 +434,7 @@ impl<'src> Tokenizer<'src> {
 
                 Dispatch::Number => {
                     let token = self.read_number()?;
-                    // implicit multiply: "2x" → Number Asterisk Identifier
+                    // implicit multiply: "2x" → Number Asterisk Variable
                     let implicit = self.current().is_some_and(is_ident_char);
                     tokens.push(token);
                     if implicit {
@@ -442,7 +442,7 @@ impl<'src> Tokenizer<'src> {
                     }
                 }
 
-                Dispatch::Identifier => {
+                Dispatch::Variable => {
                     tokens.push(self.read_identifier());
                 }
 
@@ -547,13 +547,13 @@ impl<'src> Tokenizer<'src> {
         })
     }
 
-    /// Reads an identifier from the current position, consuming bytes
+    /// Reads an Variable from the current position, consuming bytes
     /// for which `is_ident_char` returns true.
     ///
-    /// Stops at the first byte that is not a valid identifier character.
+    /// Stops at the first byte that is not a valid Variable character.
     ///
-    /// Returns `Token::Identifier` spanning the consumed range, along with
-    /// an FNV-1a hash of the identifier's bytes
+    /// Returns `Token::Variable` spanning the consumed range, along with
+    /// an FNV-1a hash of the Variable's bytes
     #[inline(always)]
     fn read_identifier(&mut self) -> Token {
         let start = self.pos as u32;
@@ -568,7 +568,7 @@ impl<'src> Tokenizer<'src> {
             }
         }
 
-        Token::Identifier {
+        Token::Variable {
             start,
             end: self.pos as u32,
             hash,
@@ -653,7 +653,7 @@ mod tests {
     #[test]
     fn test_fn_name() {
         let src = "2x+3";
-        let token = Token::Identifier {
+        let token = Token::Variable {
             start: 1,
             end: 2,
             hash: 111111, //picked randomly - shouldn't make a difference
@@ -662,7 +662,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Token::name called on non-Identifier token")]
+    #[should_panic(expected = "Token::name called on non-Variable token")]
     fn test_fn_name_panics_on_non_identifier() {
         let src = "2x+3";
         let token = Token::Plus;
@@ -693,7 +693,7 @@ mod tests {
         assert_eq!(tokens.len(), 6);
         assert_eq!(tokens[0], Token::Number { start: 0, end: 1 });
         assert_eq!(tokens[1], Token::Multiply);
-        assert!(matches!(tokens[2], Token::Identifier { .. }));
+        assert!(matches!(tokens[2], Token::Variable { .. }));
         assert_eq!(tokens[3], Token::Plus);
         assert_eq!(tokens[4], Token::Number { start: 3, end: 4 });
         assert_eq!(tokens[5], Token::EndOfFile);
@@ -712,7 +712,7 @@ mod tests {
         let src = "2hello";
         let mut expression = Tokenizer::new(src);
         let result = expression.read_identifier();
-        assert!(matches!(result, Token::Identifier { .. }));
+        assert!(matches!(result, Token::Variable { .. }));
     }
 
     #[test]
@@ -741,7 +741,7 @@ mod tests {
         let (t1, _) = tok("foo");
         let (t2, _) = tok("foo");
         match (&t1[0], &t2[0]) {
-            (Token::Identifier { hash: h1, .. }, Token::Identifier { hash: h2, .. }) => {
+            (Token::Variable { hash: h1, .. }, Token::Variable { hash: h2, .. }) => {
                 assert_eq!(h1, h2);
             }
             _ => panic!("expected Identifiers"),
@@ -753,15 +753,15 @@ mod tests {
         let (tokens, _) = tok("2x");
         assert!(matches!(tokens[0], Token::Number { .. }));
         assert!(matches!(tokens[1], Token::Multiply));
-        assert!(matches!(tokens[2], Token::Identifier { .. }));
+        assert!(matches!(tokens[2], Token::Variable { .. }));
     }
 
     #[test]
     fn test_keyword_hash_lookup() {
         let (tokens, _) = tok("sin");
         match tokens[0] {
-            Token::Identifier { hash, .. } => assert_eq!(hash, KW_SIN),
-            _ => panic!("expected Identifier"),
+            Token::Variable { hash, .. } => assert_eq!(hash, KW_SIN),
+            _ => panic!("expected Variable"),
         }
     }
 
@@ -779,6 +779,6 @@ mod tests {
         let s = format!("{:?}", tokens[0]);
         assert!(s.starts_with("Number("));
         let s = format!("{:?}", tokens[2]);
-        assert!(s.starts_with("Identifier("));
+        assert!(s.starts_with("Variable("));
     }
 }

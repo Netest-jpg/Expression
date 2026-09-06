@@ -35,7 +35,7 @@ fn write_tokens<W: Write>(
                     write!(out, " {s}")?;
                 }
             }
-            Token::Identifier { start, end, .. } => {
+            Token::Variable { start, end, .. } => {
                 let s = &src[*start as usize..*end as usize];
                 if verbose {
                     write!(out, "\n  Identifier({s})")?;

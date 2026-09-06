@@ -186,7 +186,6 @@ impl VariableList {
     /// Returns the number of distinct variables currently stored.
     ///
     /// # Examples
-    ///
     /// ```ignore
     /// let list = VariableList::new();
     /// assert_eq!(list.len(), 0);
@@ -199,7 +198,6 @@ impl VariableList {
     /// Returns `true` if no variables have been recorded.
     ///
     /// # Examples
-    ///
     /// ```ignore
     /// let list = VariableList::new();
     /// assert!(list.is_empty());
@@ -214,7 +212,6 @@ impl VariableList {
     /// taken, and was dropped rather than stored.
     ///
     /// # Examples
-    ///
     /// ```ignore
     /// let list = VariableList::new();
     /// assert!(!list.is_full());
@@ -228,7 +225,6 @@ impl VariableList {
     /// currently stored, in insertion order.
     ///
     /// # Examples
-    ///
     /// ```ignore
     /// let list = VariableList::new();
     /// assert_eq!(list.iter().count(), 0);
@@ -244,7 +240,6 @@ impl VariableList {
     /// single in-place pass).
     ///
     /// # Examples
-    ///
     /// ```ignore
     /// let mut list = VariableList::new();
     /// // ... populated via collect_variables ...
@@ -304,17 +299,8 @@ impl std::ops::Index<usize> for VariableList {
     /// list.
     ///
     /// # Panics
-    ///
     /// Panics if `index >= self.len()`, same as indexing a slice out
     /// of bounds.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// let list = VariableList::new();
-    /// // list[0] would panic here since the list is empty;
-    /// // see collect_variables for a populated example.
-    /// ```
     #[inline(always)]
     fn index(&self, index: usize) -> &Self::Output {
         &self.entries[..self.len][index]
