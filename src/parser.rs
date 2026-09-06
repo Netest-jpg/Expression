@@ -6,81 +6,6 @@ use crate::lexer::{
 };
 use fast_float2 as fast_float;
 
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum TokenKind {
-    Number = 0,
-    Ident = 1,
-    Plus = 2,
-    Minus = 3,
-    Multiply = 4,
-    Divide = 5,
-    Exponent = 6,
-    LParen = 7,
-    RParen = 8,
-    EOF = 9,
-    Equals = 10,
-    _Count = 11,
-}
-
-/// The left-binding power (LBP) of each TokenKind.\
-/// \
-/// [`TokenKind::Number`] = 0
-/// \
-/// [`TokenKind::Ident`] = 0
-/// \
-/// [`TokenKind::Plus`] = 10
-/// \
-/// [`TokenKind::Minus`] = 10
-/// \
-/// [`TokenKind::Multiply`] = 20
-/// \
-/// [`TokenKind::Divide`] = 20
-/// \
-/// [`TokenKind::Exponent`] = 30
-/// \
-/// [`TokenKind::LParen`] = 20
-/// \
-/// [`TokenKind::RParen`] = 0
-/// \
-/// [`TokenKind::EOF`] = 0
-/// \
-/// [`TokenKind::Equals`] = 5
-static LBP: [u8; TokenKind::_Count as usize] = {
-    let mut t = [0u8; TokenKind::_Count as usize];
-    t[TokenKind::Equals as usize] = 5; // lowest infix; right-assoc: rbp = 4
-    t[TokenKind::Plus as usize] = 10;
-    t[TokenKind::Minus as usize] = 10;
-    t[TokenKind::Multiply as usize] = 20;
-    t[TokenKind::Divide as usize] = 20;
-    t[TokenKind::LParen as usize] = 20; // implicit multiply: x(0) -> x*(0)
-    t[TokenKind::Exponent as usize] = 30; // right-assoc: rbp = 29
-    t
-};
-
-/// Converts a [`Token`] to a [`TokenKind`].\
-/// # Example:
-/// ```ignore
-/// // kind_of and TokenKind are private; see the `test_fn_kind_of` unit test.
-/// assert_eq!(kind_of(&Token::Plus), TokenKind::Plus);
-/// ```
-#[inline(always)]
-fn kind_of(token: &Token) -> TokenKind {
-    match token {
-        Token::Number { .. } => TokenKind::Number,
-        Token::Identifier { .. } => TokenKind::Ident,
-        Token::Plus => TokenKind::Plus,
-        Token::Minus => TokenKind::Minus,
-        Token::Multiply => TokenKind::Multiply,
-        Token::Divide => TokenKind::Divide,
-        Token::Exponent => TokenKind::Exponent,
-        Token::LeftParenthesis => TokenKind::LParen,
-        Token::RightParenthesis => TokenKind::RParen,
-        Token::Equals => TokenKind::Equals,
-        Token::EndOfFile => TokenKind::EOF,
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum Node {
     Number(f64),
@@ -135,13 +60,13 @@ pub enum Node {
     Equation(u32, u32),
 }
 
-/// Resolves a function hash to its corresponding [`Node`].
+/// Resolves a function hash to its corresponding `Node`.
 ///
-/// The supplied `arg` is stored in the resulting [`Node`].\
+/// The supplied `arg` is stored in the resulting `Node`.
+///
 /// Returns `None` if the supplied `hash` doesn't match any of the supported functions' hash.
 ///
 /// # Examples
-///
 /// ```ignore
 /// let node = known_function_kind(KW_SIN, 30);
 ///
@@ -190,13 +115,6 @@ pub struct Parser<'src, 'arena> {
 }
 
 impl<'src, 'arena> Parser<'src, 'arena> {
-    /// Creates a parser over `tokens` and `src`, using `arena` to store the parsed nodes.\
-    /// The parser starts at index 0 of the `tokens` array.
-    /// # Arguments
-    ///
-    /// * `tokens` - The tokens to parse.
-    /// * `src` - The original source text from which `tokens` was produced.
-    /// * `arena` - A mutable vector used to store the parsed nodes.
     pub fn new(tokens: &'src [Token], src: &'src str, arena: &'arena mut Vec<Node>) -> Self {
         Parser {
             tokens,
@@ -206,12 +124,15 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         }
     }
 
-    /// Parse the entire expression, returning the root node.
-    /// Returns an `Error` if the last [`TokenKind`] is not [`TokenKind::EOF`].
+    /// Parses the entire expression and returns the root node.
+    ///
+    /// Returns an `Err` if the last `Token` is not `Token::EndOfFile`.
+    ///
     /// # Example:
     /// ```rust
     /// use expression::lexer::Tokenizer;
     /// use expression::parser::{Node, Parser};
+    ///
     /// let mut tokens = Vec::new();
     /// let mut arena = Vec::new();
     /// let src = "x^2+2*x=2*x-3";
@@ -224,11 +145,9 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     /// ```
     pub fn parse(mut self) -> Result<u32, String> {
         let root = self.pratt_parse(0)?;
-
-        if self.peek_tokenkind() != TokenKind::EOF {
+        if !matches!(self.peek(), Token::EndOfFile) {
             return self.unexpected_trailing_token();
         }
-
         Ok(root)
     }
     #[cold]
@@ -275,15 +194,13 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     ///
     /// Tokenizer::new(src).tokenize(&mut tokens).unwrap();
     ///
-    /// // `parse()` calls `pratt_parse(0)` internally, so `*` (higher LBP)
-    /// // binds tighter than `+`, producing Add(2, Mul(3, 4)).
     /// let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
     /// assert!(matches!(arena[root as usize], Node::Add(_, _)));
     /// ```
     fn pratt_parse(&mut self, rbp: u8) -> Result<u32, String> {
         let mut left = self.nud()?;
         loop {
-            let lbp = unsafe { *LBP.get_unchecked(self.peek_tokenkind() as usize) };
+            let lbp = self.peek().lbp();
             if lbp <= rbp {
                 break;
             }
@@ -321,7 +238,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             Token::Number { start, end } => {
                 let raw = &self.src[start as usize..end as usize];
                 let value = fast_float::parse::<f64, &str>(raw)
-                    .map_err(|e| format!("invalid number '{}': {}", raw, e))?;
+                    .map_err(|e| invalid_number_error(raw, &e))?;
                 Ok(self.push(Node::Number(value)))
             }
 
@@ -333,11 +250,11 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                     return Ok(self.push(Node::Constant(std::f64::consts::E)));
                 }
 
-                if matches!(self.peek_tokenkind(), TokenKind::LParen) {
+                if matches!(self.peek(), Token::LeftParenthesis) {
                     if self.src[start as usize..end as usize].starts_with("log_") {
                         let base = self.parse_log_base(start, end)?;
                         self.skip(); // eat '('
-                        let arg = self.pratt_parse(0)?;
+                        let arg = self.pratt_parse(token.rbp())?;
                         self.expect_rparen()?;
                         return Ok(self.push(Node::LogBase(base, arg)));
                     }
@@ -366,7 +283,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 Ok(inner)
             }
 
-            other => Err(format!("Unexpected token in expression: {:?}", other)),
+            other => unexpected_token_in_expression(&other),
         }
     }
 
@@ -408,7 +325,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         let mut tokens = Vec::new();
         Tokenizer::new(base_src)
             .tokenize(&mut tokens)
-            .map_err(|e| format!("Invalid log base: {e}"))?;
+            .map_err(|e| invalid_log_base_error(&e))?;
         offset_tokens(&mut tokens, base_start);
 
         Parser::new(&tokens, self.src, self.arena).parse()
@@ -437,21 +354,12 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         index
     }
 
-    /// Returns [`TokenKind`] at the current [`position`].
-    /// # Safety
-    /// This function does not perform bounds checking.
-    /// The caller must ensure that [`position`] must be less than the number of tokens.
-    #[inline(always)]
-    fn peek_tokenkind(&self) -> TokenKind {
-        kind_of(unsafe { self.tokens.get_unchecked(self.position) })
-    }
-
     /// Expect the current token to be an rparen.\
     /// Returns an `Error` if it is not [`TokenKind::RParen`] and skips if it is.
     #[inline(always)]
     fn expect_rparen(&mut self) -> Result<(), String> {
-        if self.peek_tokenkind() != TokenKind::RParen {
-            return Err(format!("Expected ')', found {:?}", self.peek()));
+        if !matches!(self.peek(), Token::RightParenthesis) {
+            return Err(expected_rparen_error(self.peek()));
         }
         self.skip();
         Ok(())
@@ -500,35 +408,35 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         let token = self.consume();
         match token {
             Token::Equals => {
-                let right = self.pratt_parse(4)?; // rbp=4 → right-associative
+                let right = self.pratt_parse(token.rbp())?; // rbp=4 → right-associative
                 Ok(self.push(Node::Equation(left, right)))
             }
             Token::Plus => {
-                let right = self.pratt_parse(10)?;
+                let right = self.pratt_parse(token.rbp())?;
                 Ok(self.push(Node::Add(left, right)))
             }
             Token::Minus => {
-                let right = self.pratt_parse(10)?;
+                let right = self.pratt_parse(token.rbp())?;
                 Ok(self.push(Node::Sub(left, right)))
             }
             Token::Multiply => {
-                let right = self.pratt_parse(20)?;
+                let right = self.pratt_parse(token.rbp())?;
                 Ok(self.push(Node::Mul(left, right)))
             }
             Token::Divide => {
-                let right = self.pratt_parse(20)?;
+                let right = self.pratt_parse(token.rbp())?;
                 Ok(self.push(Node::Div(left, right)))
             }
             Token::Exponent => {
-                let right = self.pratt_parse(29)?;
+                let right = self.pratt_parse(token.rbp())?;
                 Ok(self.push(Node::Pow(left, right)))
             }
             Token::LeftParenthesis => {
-                let right = self.pratt_parse(0)?;
+                let right = self.pratt_parse(token.rbp())?;
                 self.expect_rparen()?;
                 Ok(self.push(Node::Mul(left, right)))
             }
-            other => Err(format!("Unexpected token: {:?}", other)),
+            other => unexpected_infix_token(&other),
         }
     }
 }
@@ -544,16 +452,40 @@ fn offset_tokens(tokens: &mut [Token], offset: u32) {
         }
     }
 }
+#[cold]
+#[inline(never)]
+fn invalid_number_error(raw: &str, e: &impl std::fmt::Display) -> String {
+    format!("Invalid number '{}': {}", raw, e)
+}
+
+#[cold]
+#[inline(never)]
+fn unexpected_token_in_expression(token: &Token) -> Result<u32, String> {
+    Err(format!("Unexpected token in expression: {:?}", token))
+}
+
+#[cold]
+#[inline(never)]
+fn unexpected_infix_token(token: &Token) -> Result<u32, String> {
+    Err(format!("Unexpected token: {:?}", token))
+}
+
+#[cold]
+#[inline(never)]
+fn expected_rparen_error(found: &Token) -> String {
+    format!("Expected ')', found {:?}", found)
+}
+
+#[cold]
+#[inline(never)]
+fn invalid_log_base_error(e: impl std::fmt::Display) -> String {
+    format!("Invalid log base: {e}")
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::lexer::Tokenizer;
-
-    #[test]
-    fn test_fn_kind_of() {
-        assert_eq!(kind_of(&Token::Plus), TokenKind::Plus);
-    }
 
     #[test]
     fn test_fn_known_function_kind() {

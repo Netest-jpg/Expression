@@ -1,13 +1,15 @@
-#![allow(dead_code)]
 use fast_float2 as fast_float;
 
 const FNV_OFFSET_BASIS: u64 = 14695981039346656037;
 const FNV_PRIME: u64 = 1099511628211;
 
-/// Computes hash for a byte slice using the FNV-1a algorithm at compile time.\
-/// **FNV-1a algorithm:**\
-/// `hash = (hash ^ byte).wrapping_mul(FNV_PRIME)`\
-/// **FNV_OFFSET_BASIS** is used as the initial hash value.
+/// Computes hash for a byte slice using the FNV-1a algorithm at compile time.
+///
+/// **FNV-1a algorithm:**
+///
+/// `hash = (hash ^ byte).wrapping_mul(FNV_PRIME)`
+///
+/// `FNV_OFFSET_BASIS` is used as the initial hash value.
 /// # Returns
 /// The hash of the bytes.
 const fn keyword_hash(bytes: &[u8]) -> u64 {
@@ -63,8 +65,9 @@ pub const KW_ASECH: u64 = keyword_hash(b"asech");
 static IS_IDENT: [u8; 32] = build_ident_table();
 static DISPATCH: [Dispatch; 256] = build_dispatch_table();
 
-/// Builds a bitset of 32 bytes **at compile-time**, where each byte represents 8 characters.\
-/// Each bit in the byte is set to **1** if the corresponding character is an identifier character.\
+/// Builds a bitset of 32 bytes **at compile-time**, where each byte represents 8 characters.
+///
+/// Each bit in the byte is set to **1** if the corresponding character is an identifier character.
 /// # Allowed characters:
 /// - `0` .. `9`
 /// - `A` .. `Z`
@@ -120,8 +123,9 @@ enum Dispatch {
     Unknown,
 }
 
-/// Builds the `DISPATCH` lookup table at compile time.\
-/// Maps every possible byte (0-255) to a `Dispatch` enum variant.\
+/// Builds the `DISPATCH` lookup table at compile time.
+/// Maps every possible byte (0-255) to a `Dispatch` enum variant.
+///
 /// - Whitespace: ` `, `\t`, `\n`, `\r`
 /// - Digits: `0-9`, `.`
 /// - Alpha: `a-z`, `A-Z`
@@ -188,9 +192,50 @@ pub enum Token {
 }
 
 impl Token {
-    //TODO: update the docstring
-    /// Returns the raw source text for the corresponding number token.\
-    /// Panics if called on any other token variant.
+    /// Returns the Left Binding Power (LBP) of a [`Token`]
+    ///
+    /// # Example:
+    /// ```rust
+    /// ```
+    #[inline(always)]
+    pub fn lbp(&self) -> u8 {
+        match self {
+            Token::Equals => 5,
+            Token::Plus | Token::Minus => 10,
+            Token::Multiply | Token::Divide => 20,
+            Token::Exponent => 30,
+            Token::LeftParenthesis => 20, // implicit multiply x(0) -> x*0
+            // Number, Identifier, RightParenthesis, EndOfFile
+            _ => 0,
+        }
+    }
+
+    /// Returns the Right Binding Power (RBP) of a [`Token`] for right-associative operators
+    ///
+    /// # Example:
+    ///
+    #[inline(always)]
+    pub fn rbp(&self) -> u8 {
+        match self {
+            Token::Equals => 4,
+            Token::Plus | Token::Minus => 10,
+            Token::Multiply | Token::Divide => 20,
+            Token::Exponent => 29,
+            // Number, Identifier, LeftParenthesis, RightParenthesis, EndOfFile
+            _ => 0,
+        }
+    }
+
+    /// Returns the raw source text for the corresponding number token.
+    ///
+    /// # Panics
+    /// Panics if called on any `Token` variants other than `Token::Number`.
+    ///
+    /// # Safety
+    /// Uses `slice_unchecked` internally which skips the UTF-8 boundary and bounds check. It is sound here because `start` & `end` are byte offsets produced by tokenizer from this exact `src`, so they will always be within bounds.
+    ///
+    /// Callers must pass the same `src` the token was tokenized from. Any other string, even if it's identical content will result in undefined behaviour.
+    ///
     /// # Example:
     /// ```rust
     /// use expression::lexer::Token;
@@ -213,9 +258,16 @@ impl Token {
         }
     }
 
-    //TODO: Update docstring
-    /// Returns the raw source text for the corresponding identifier token.\
-    /// Panics if called on any other token variant.
+    /// Returns the raw source text for the corresponding identifier token.
+    ///
+    /// # Panics
+    /// Panics if called on any `Token` variants other than `Token::Identifier`.
+    ///
+    /// # Safety
+    /// Uses `slice_unchecked` internally which skips the UTF-8 boundary and bounds check. It is sound here because `start` & `end` are byte offsets produced by tokenizer from this exact `src`, so they will always be within bounds.
+    ///
+    /// Callers must pass the same `src` the token was tokenized from. Any other string, even if it's identical content will result in undefined behaviour.
+    ///
     /// # Example:
     /// ```rust
     /// use expression::lexer::Token;
@@ -240,9 +292,10 @@ impl Token {
         }
     }
 
-    /// Parse a raw string literal to f64.\
-    /// Returns an error either if the string literal is not a valid decimal number
-    /// or if any characters are left remaining unparsed.
+    /// Parse a raw string literal to f64.
+    ///
+    /// Returns `Err` if the string literal is not a valid decimal number or if any characters are left remaining unparsed.
+    ///
     /// # Example:
     /// ```rust
     /// use expression::lexer::Token;
@@ -255,8 +308,15 @@ impl Token {
         fast_float::parse::<f64, &str>(self.raw(src)).expect("Invalid number")
     }
 
-    /// Returns the raw source text as Some() for the corresponding identifier token.\
-    /// Returns None if called on any other token variant.
+    /// Returns the raw source text for a `Token::Identifier`.
+    ///
+    /// Returns `None` if called on any other token variant.
+    ///
+    /// # Safety
+    /// Uses `slice_unchecked` internally which skips the UTF-8 boundary and bounds check. It is sound here because `start` & `end` are byte offsets produced by tokenizer from this exact `src`, so they will always be within bounds.
+    ///
+    /// Callers must pass the same `src` the token was tokenized from. Any other string, even if it's identical content will result in undefined behaviour.
+    ///
     /// # Example:
     /// ```rust
     /// use expression::lexer::Token;
@@ -274,14 +334,22 @@ impl Token {
         }
     }
 
+    /// Returns the byte slice `src[start..end]` without UTF-8 or bounds checks.
+    ///
+    /// # Safety
+    /// Caller must ensure:
+    /// - `start <= end <= src.len()`
+    /// - `start` and `end` both lie on UTF-8 character boundaries in `src`
+    ///
+    /// Violating either condition will result in undefined behavior.
     #[inline(always)]
     unsafe fn slice_unchecked<'src>(src: &'src str, start: u32, end: u32) -> &'src str {
         unsafe { src.get_unchecked(start as usize..end as usize) }
     }
 }
 
-/// Formats a token as a human-readable string for debugging.
 impl std::fmt::Debug for Token {
+    /// Formats `Token` for debugging.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Token::Number { start, end } => write!(f, "Number([{start}..{end}])"),
@@ -305,9 +373,6 @@ pub struct Tokenizer<'src> {
 }
 
 impl<'src> Tokenizer<'src> {
-    /// Creates a new [`Tokenizer`] with the supplied string literal.\
-    /// Stores the string literal as a byte slice
-    /// and sets the [`pos`] 0.
     pub fn new(input: &'src str) -> Self {
         Tokenizer {
             src: input.as_bytes(),
@@ -315,28 +380,34 @@ impl<'src> Tokenizer<'src> {
         }
     }
 
-    /// Takes in a mutable vector of [`Token`],
-    /// clears out the pre-existing elements inside the vector,
-    /// makes a rough estimate to set for token capacity (`hint = self.src.len()/2+2`),
-    /// reserves capacity for `hint - tokens.len()`,
-    /// tokenizes the src's byte slice into a vector of [`Token`]s
-    /// and pushes them into the vector.
+    /// Tokenizes the `Tokenizer`'s source string into a Vector of `Token`, replacing any existing contents.
+    ///
+    /// `Token::EndOfFile` is always appended as the final token - marking the end of input.
+    ///
+    /// A number immediately followed by an identifier with no operator between
+    /// them implicitly inserts `Token::Multiply` between them.
+    ///
+    /// E.g., "2x" -> (`Token::Number`, `Token::Multiply`, `Token::Identifier`)
+    ///
+    /// # Errors
+    /// Returns `Err` if the source contains a byte that isn't valid `Token` variant.
+    ///
     /// # Example:
     /// ```rust
     /// use expression::lexer::{Token, Tokenizer};
+    ///
     /// let src = "2x+3";
     /// let mut expression = Tokenizer::new(src);
     /// let mut tokens = Vec::new();
     /// expression.tokenize(&mut tokens).unwrap();
+    ///
     /// assert_eq!(tokens.len(), 6);
     /// assert_eq!(tokens[0], Token::Number { start: 0, end: 1 });
     /// assert_eq!(tokens[1], Token::Multiply);
+    /// assert!(matches!(tokens[2], Token::Identifier { .. }));
     /// assert_eq!(tokens[3], Token::Plus);
     /// assert_eq!(tokens[4], Token::Number { start: 3, end: 4 });
     /// assert_eq!(tokens[5], Token::EndOfFile);
-    /// assert_eq!(tokens[0].raw(src), "2");
-    /// assert_eq!(tokens[2].name(src), "x");
-    /// assert_eq!(tokens[4].raw(src), "3");
     /// ```
     pub fn tokenize(&mut self, tokens: &mut Vec<Token>) -> Result<(), String> {
         self.pos = 0;
@@ -416,42 +487,38 @@ impl<'src> Tokenizer<'src> {
                 }
 
                 Dispatch::Unknown => {
-                    return Err(format!("Unknown character: '{}'", byte as char));
+                    return Err(unknown_character_error(byte));
                 }
             }
         }
         Ok(())
     }
 
-    /// Returns the current byte, else returns `None`.
+    /// Returns the byte at the current position or `None` if positioned at or past the end of `src`.
     #[inline(always)]
     fn current(&self) -> Option<u8> {
         self.src.get(self.pos).copied()
     }
 
-    /// Advances the tokenizer to the next byte.\
-    /// i.e. it sets the Tokenizer's [`pos`] to the next byte's index.
+    /// Advances the current position by one byte.
+    ///
+    /// Callers must ensure this doesn't advance past `src.len()` if they intend to call `current()` or similar afterward without first checking for `None`.
     #[inline(always)]
     fn advance(&mut self) {
         self.pos += 1;
     }
 
-    /// Reads the numeric string literal from the current position.
-    /// The number may should contain digits and at most one decimal point.\
-    /// \
-    /// Returns [`Token::Number`] spanning the consumed source range,
-    /// **i.e.**, until the number is finished.\
-    /// \
-    /// Returns an Error if there are multiple decimal points or if there is no digit
+    /// Reads a numeric literal from the current position, consuming digits and at most one decimal point in any order.
     ///
-    /// # Example:
-    /// ```ignore
-    /// // read_number is private; see the `test_fn_read_number` unit test.
-    /// let src = "1234";
-    /// let mut expression = Tokenizer::new(src);
-    /// let result = expression.read_number();
-    /// assert_eq!(result, Ok(Token::Number { start: 0, end: 4 }));
-    /// ```
+    /// E.g., `.5` and `5.` are both valid
+    ///
+    /// Stops at the first byte that is neither an ASCII digit nor an unseen "`.`"
+    ///
+    /// Returns `Token::Number` spanning the consumed range.
+    ///
+    /// # Errors
+    /// - Returns `Err` if a second `.` is encounterd.
+    /// - Returns `Err` if no digits was consumed at all. (E.g. a lone `.` with no digits before or after it)
     #[inline(always)]
     fn read_number(&mut self) -> Result<Token, String> {
         let start = self.pos as u32;
@@ -466,42 +533,27 @@ impl<'src> Tokenizer<'src> {
                 dot_seen = true;
                 self.advance();
             } else if byte == b'.' {
-                let invalid_number =
-                    std::str::from_utf8(&self.src[start as usize..=self.pos]).unwrap();
-                return Err(format!(
-                    "Invalid number: Unexpected second '.' in '{}'",
-                    invalid_number
-                ));
+                return Err(invalid_second_dot_error(self.src, start, self.pos));
             } else {
                 break;
             }
         }
-
         if !digit_seen {
-            return Err("Invalid number: Expected at least one digit".to_string());
+            return Err(no_digit_error());
         }
-
         Ok(Token::Number {
             start,
             end: self.pos as u32,
         })
     }
 
-    /// Reads the string literal from the current position,
-    /// checks if the string literal is valid indentifier character using `is_ident_char()`,
-    /// updates the hash field using `fnv1a_update()`,
-    /// advances the position using `advance()`.
-    /// \
-    /// Returns [`Token::Identifier`] spanning the consumed source range,
-    /// **i.e.**, until the instance of the identifer is finished.\
-    /// # Example:
-    /// ```ignore
-    /// // read_identifier is private; see the `tests_fn_read_identifier` unit test.
-    /// let src = "2hello";
-    /// let mut expression = Tokenizer::new(src);
-    /// let result = expression.read_identifier();
-    /// assert!(matches!(result, Token::Identifier { start, end, hash }));
-    /// ```
+    /// Reads an identifier from the current position, consuming bytes
+    /// for which `is_ident_char` returns true.
+    ///
+    /// Stops at the first byte that is not a valid identifier character.
+    ///
+    /// Returns `Token::Identifier` spanning the consumed range, along with
+    /// an FNV-1a hash of the identifier's bytes
     #[inline(always)]
     fn read_identifier(&mut self) -> Token {
         let start = self.pos as u32;
@@ -524,14 +576,40 @@ impl<'src> Tokenizer<'src> {
     }
 }
 
-/// Computes hash for one byte using the FNV-1a algorithm.\
-/// **FNV-1a algorithm:**\
-/// `hash = (hash ^ byte).wrapping_mul(FNV_PRIME)`\
+/// Computes hash for one byte using the FNV-1a algorithm.
+///
+/// **FNV-1a algorithm:**
+///
+/// `hash = (hash ^ byte).wrapping_mul(FNV_PRIME)`
+///
 /// # Returns
 /// The hash of a byte.
 #[inline(always)]
 fn fnv1a_update(hash: u64, byte: u8) -> u64 {
     (hash ^ byte as u64).wrapping_mul(FNV_PRIME)
+}
+
+// Error handles
+#[cold]
+#[inline(never)]
+fn invalid_second_dot_error(src: &[u8], start: u32, pos: usize) -> String {
+    let invalid_number = std::str::from_utf8(&src[start as usize..=pos]).unwrap();
+    format!(
+        "Invalid number: Unexpected second '.' in '{}'",
+        invalid_number
+    )
+}
+
+#[cold]
+#[inline(never)]
+fn no_digit_error() -> String {
+    "Invalid number: Expected at least one digit".to_string()
+}
+
+#[cold]
+#[inline(never)]
+fn unknown_character_error(byte: u8) -> String {
+    format!("Unknown character: '{}'", byte as char)
 }
 
 #[cfg(test)]
@@ -612,9 +690,13 @@ mod tests {
         assert_eq!(tokens[4], Token::Number { start: 3, end: 4 });
         assert_eq!(tokens[5], Token::EndOfFile);
 
-        assert_eq!(tokens[0].raw(src), "2");
-        assert_eq!(tokens[2].name(src), "x");
-        assert_eq!(tokens[4].raw(src), "3");
+        assert_eq!(tokens.len(), 6);
+        assert_eq!(tokens[0], Token::Number { start: 0, end: 1 });
+        assert_eq!(tokens[1], Token::Multiply);
+        assert!(matches!(tokens[2], Token::Identifier { .. }));
+        assert_eq!(tokens[3], Token::Plus);
+        assert_eq!(tokens[4], Token::Number { start: 3, end: 4 });
+        assert_eq!(tokens[5], Token::EndOfFile);
     }
 
     #[test]
@@ -626,12 +708,11 @@ mod tests {
     }
 
     #[test]
-    #[allow(unused_variables)]
     fn tests_fn_read_identifier() {
         let src = "2hello";
         let mut expression = Tokenizer::new(src);
         let result = expression.read_identifier();
-        assert!(matches!(result, Token::Identifier { start, end, hash }));
+        assert!(matches!(result, Token::Identifier { .. }));
     }
 
     #[test]

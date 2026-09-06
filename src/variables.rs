@@ -1,6 +1,12 @@
 use crate::parser::Node;
 pub const VARIABLE_LIMIT: usize = 64;
 
+#[cold]
+#[inline(never)]
+fn variable_limit_reached_err() -> String {
+    format!("Variable limit ({VARIABLE_LIMIT}) reached; clear some variables first")
+}
+
 pub struct VariableBank {
     entries: [(u64, f64); VARIABLE_LIMIT], // stores (hash, value)
     // fixed stack/inline array — no heap
@@ -38,9 +44,7 @@ impl VariableBank {
             return Ok(());
         }
         if self.len >= VARIABLE_LIMIT {
-            return Err(format!(
-                "variable limit ({VARIABLE_LIMIT}) reached; clear some variables first"
-            ));
+            return Err(variable_limit_reached_err());
         }
         self.entries[self.len] = (hash, value);
         self.len += 1;
