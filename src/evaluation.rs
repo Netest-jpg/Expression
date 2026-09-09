@@ -1,13 +1,9 @@
 use crate::parser::Node;
 use crate::variables::{VARIABLE_LIMIT, VariableBank, collect_variables};
 
-/// Zero-allocation error type for evaluate.  Only converted to String at the
-/// display boundary, so the Newton hot path never heap-allocates on errors.
 #[derive(Debug)]
 pub enum EvaluationError {
-    /// A variable was looked up but had no binding in VariableBank.
     UnboundVariable,
-    /// The root node is an Equation — use evaluate_pending instead.
     IsEquation,
 }
 
@@ -15,12 +11,12 @@ impl EvaluationError {
     // TODO: write a docstring and doctest
     pub fn to_string_msg(&self) -> String {
         match self {
-            EvaluationError::UnboundVariable => "unbound variable".to_string(),
-            EvaluationError::IsEquation => "use 'evaluate' to evaluate an equation".to_string(),
+            EvaluationError::UnboundVariable => "Unbound variable".to_string(),
+            EvaluationError::IsEquation => "Use 'evaluate' to evaluate an equation".to_string(),
         }
     }
 }
-// TODO: write a docstring and doctest
+
 pub fn evaluate(arena: &[Node], idx: u32, vars: &VariableBank) -> Result<f64, EvaluationError> {
     match unsafe { arena.get_unchecked(idx as usize) } {
         Node::Number(v) => Ok(*v),
@@ -28,8 +24,8 @@ pub fn evaluate(arena: &[Node], idx: u32, vars: &VariableBank) -> Result<f64, Ev
 
         Node::Variable(_, _, hash) => vars.get(*hash).ok_or(EvaluationError::UnboundVariable),
 
-        // Equation nodes are not evaluated by plain evaluate; use evaluate_pending.
         Node::Equation(_, _) => Err(EvaluationError::IsEquation),
+
         Node::Neg(a) => Ok(-evaluate(arena, *a, vars)?),
         Node::Add(a, b) => Ok(evaluate(arena, *a, vars)? + evaluate(arena, *b, vars)?),
         Node::Sub(a, b) => Ok(evaluate(arena, *a, vars)? - evaluate(arena, *b, vars)?),
@@ -40,7 +36,6 @@ pub fn evaluate(arena: &[Node], idx: u32, vars: &VariableBank) -> Result<f64, Ev
         Node::Sin(a) => Ok(evaluate(arena, *a, vars)?.sin()),
         Node::Cos(a) => Ok(evaluate(arena, *a, vars)?.cos()),
         Node::Tan(a) => Ok(evaluate(arena, *a, vars)?.tan()),
-
         Node::Sec(a) => Ok(1.0 / evaluate(arena, *a, vars)?.cos()),
         Node::Csc(a) => Ok(1.0 / evaluate(arena, *a, vars)?.sin()),
         Node::Cot(a) => {
@@ -51,7 +46,6 @@ pub fn evaluate(arena: &[Node], idx: u32, vars: &VariableBank) -> Result<f64, Ev
         Node::Asin(a) => Ok(evaluate(arena, *a, vars)?.asin()),
         Node::Acos(a) => Ok(evaluate(arena, *a, vars)?.acos()),
         Node::Atan(a) => Ok(evaluate(arena, *a, vars)?.atan()),
-
         Node::Asec(a) => Ok((1.0 / evaluate(arena, *a, vars)?).acos()),
         Node::Acsc(a) => Ok((1.0 / evaluate(arena, *a, vars)?).asin()),
         Node::Acot(a) => Ok((1.0 / evaluate(arena, *a, vars)?).atan()),
@@ -83,23 +77,16 @@ pub fn evaluate(arena: &[Node], idx: u32, vars: &VariableBank) -> Result<f64, Ev
 }
 
 // TODO: write a docstring and doctest
-pub fn try_simple_assign(
-    arena: &[Node],
-    root: u32,
-    vars: &mut VariableBank,
-) -> Result<Option<(u32, u32, f64)>, String> {
+#[rustfmt::skip]
+pub fn try_simple_assign(arena: &[Node], root: u32, vars: &mut VariableBank) -> Result<Option<(u32, u32, f64)>, String> {
     let Node::Equation(lhs, rhs) = &arena[root as usize] else {
-        return Ok(None); // not an equation at all
+        return Ok(None);
     };
     let (lhs, rhs) = (*lhs, *rhs);
-
-    // lhs must be a plain variable
     let (var_start, var_end, var_hash) = match &arena[lhs as usize] {
         Node::Variable(start, end, hash) => (*start, *end, *hash),
-        _ => return Ok(None), // complex lhs → treat as equation
+        _ => return Ok(None),
     };
-
-    // rhs must be fully evaluable right now
     let value = evaluate(arena, rhs, vars).map_err(|e| e.to_string_msg())?;
     vars.set(var_hash, value)?;
     Ok(Some((var_start, var_end, value)))
@@ -117,29 +104,21 @@ pub fn try_simple_assign(
 //   • >1 free vars → return Err listing which vars still need values.
 // -----------------------------------------------------------------------
 pub enum EvaluationResult {
-    /// All vars bound: lhs value and rhs value (should be equal for an equation).
-    Verified { lhs: f64, rhs: f64 },
-    /// One free var solved numerically.
-    /// `values` holds 1 or 2 roots; a second root is included when `-solution`
-    /// also satisfies the equation (e.g. x^2 = 4 → [2, -2]).
+    Verified {
+        lhs: f64,
+        rhs: f64,
+    },
     Solved {
         name: String,
         values: [f64; 2],
         count: u8,
     },
-    /// Expression (no `=`) evaluated to a single value.
     Value(f64),
 }
 
 // TODO: write a docstring and doctest
-
-pub fn evaluate_pending(
-    arena: &[Node],
-    root: u32,
-    vars: &VariableBank,
-    src: &str,
-) -> Result<EvaluationResult, String> {
-    // Plain expression (no Equation node at root)
+#[rustfmt::skip]
+pub fn evaluate_pending(arena: &[Node], root: u32, vars: &VariableBank, src: &str) -> Result<EvaluationResult, String> {
     let (lhs_idx, rhs_idx) = match &arena[root as usize] {
         Node::Equation(l, r) => (*l, *r),
         _ => {
@@ -148,18 +127,14 @@ pub fn evaluate_pending(
         }
     };
 
-    // Collect free variables (unbound in VariableBank).
     let mut free = collect_variables(arena, root);
     if free.is_full() {
-        return Err(format!(
-            "cannot evaluate: variable limit ({VARIABLE_LIMIT}) exceeded"
-        ));
+        return Err(format!("Cannot evaluate: variable limit ({VARIABLE_LIMIT}) exceeded"));
     }
     free.retain(|(hash, _, _)| vars.get(*hash).is_none());
 
     match free.len() {
         0 => {
-            // All bound — evaluate both sides.
             let lhs_val = evaluate(arena, lhs_idx, vars).map_err(|e| e.to_string_msg())?;
             let rhs_val = evaluate(arena, rhs_idx, vars).map_err(|e| e.to_string_msg())?;
             Ok(EvaluationResult::Verified {
@@ -172,12 +147,7 @@ pub fn evaluate_pending(
             let (unknown_hash, start, end) = free[0];
             let name = src[start as usize..end as usize].to_string();
 
-            // f(x) = lhs(x) - rhs(x); we want f(x) = 0.
-            //
-            // Build a probe VariableBank once (one clone of entries + one push),
-            // then update only the unknown's slot each Newton step via set_last.
-            // Zero heap allocations inside the Newton loop.
-            let mut probe = vars.clone_for_probe(unknown_hash);
+            let mut probe = vars.fork_probe(unknown_hash);
             let mut f = |x: f64| -> Result<f64, String> {
                 probe.set_last(x);
                 let l = evaluate(arena, lhs_idx, &probe).map_err(|e| e.to_string_msg())?;
@@ -185,17 +155,15 @@ pub fn evaluate_pending(
                 Ok(l - r)
             };
 
-            // Newton's method, max 64 iterations, starting at x=1.0 then x=0.0 if needed.
             let solution = newton(&mut f, 1.0)
                 .or_else(|_| newton(&mut f, 0.0))
                 .or_else(|_| newton(&mut f, -1.0))
                 .or_else(|_| newton(&mut f, 10.0))
                 .map_err(|_| {
-                    format!("could not solve for '{name}'; try assigning an initial guess manually")
+                    format!("Could not solve for '{name}'; try assigning an initial guess manually")
                 })?;
 
             // Check whether -solution is also a root (e.g. x^2 = 4 → ±2).
-            // Two extra evaluations; no extra Newton runs.
             const ROOT_TOL: f64 = 1e-6;
             let neg = -solution;
             let has_neg_root =
@@ -215,9 +183,8 @@ pub fn evaluate_pending(
         }
 
         _ => {
-            // Build error message without a Vec<String> intermediate.
             let mut msg = format!(
-                "cannot evaluate: {} variable{} still unassigned: ",
+                "Cannot evaluate: {} variable{} still unassigned: ",
                 free.len(),
                 if free.len() == 1 { "" } else { "s" },
             );
@@ -249,7 +216,7 @@ fn newton(f: &mut impl FnMut(f64) -> Result<f64, String>, x0: f64) -> Result<f64
         }
         let fpx = (f(x + H)? - f(x - H)?) / (2.0 * H);
         if fpx.abs() < 1e-14 {
-            return Err("derivative too small".to_string());
+            return Err("Derivative too small".to_string());
         }
         let x_new = x - fx / fpx;
         if (x_new - x).abs() < TOL {
@@ -258,7 +225,7 @@ fn newton(f: &mut impl FnMut(f64) -> Result<f64, String>, x0: f64) -> Result<f64
         x = x_new;
         fx = f(x)?;
     }
-    Err("did not converge".to_string())
+    Err("Did not converge".to_string())
 }
 
 #[cfg(test)]

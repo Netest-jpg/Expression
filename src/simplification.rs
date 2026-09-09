@@ -113,19 +113,29 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
             push(arena, Node::Div(a, b))
         }
 
-        Node::Pow(a, b) => {
-            let a = simplify(arena, a);
-            let b = simplify(arena, b);
-            if let (Some(x), Some(y)) = (as_number(arena, a), as_number(arena, b)) {
-                return push(arena, Node::Number(x.powf(y)));
+        Node::Pow(base, exponent) => {
+            let base = simplify(arena, base);
+            let exponent = simplify(arena, exponent);
+
+            if let (Some(x), Some(y)) = (as_number(arena, base), as_number(arena, exponent)) {
+                return push(arena, Node::Number(x.powf(y))); // 2^2 -> 4
             }
-            if is_zero(arena, b) {
+            if is_zero(arena, exponent) {
                 return push(arena, Node::Number(1.0)); // x^0 -> 1
             }
-            if is_one(arena, b) {
-                return a; // x^1 -> x
+            if is_one(arena, exponent) {
+                return base; // x^1 -> x
             }
-            push(arena, Node::Pow(a, b))
+            if let Node::LogBase(log_base, arg) = arena[exponent as usize] {
+                if let (Node::Number(b1), Node::Number(b2)) =
+                    (&arena[exponent as usize], &arena[log_base as usize])
+                {
+                    if *b2 > 0.0 && *b2 != 1.0 && b1 == b2 {
+                        return arg; // b^log_b(k)=k where, b is a Number
+                    }
+                }
+            }
+            push(arena, Node::Pow(base, exponent))
         }
 
         // Equation: simplify both sides independently. No identity rules
@@ -175,7 +185,25 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
         Node::LogBase(base, arg) => {
             let base = simplify(arena, base);
             let arg = simplify(arena, arg);
+            // log_b(b^k) -> k
+            if let Node::Pow(inner_base, k) = arena[arg as usize] {
+                if let (Node::Number(b1), Node::Number(b2)) =
+                    (&arena[base as usize], &arena[inner_base as usize])
+                {
+                    if *b1 > 0.0 && *b1 != 1.0 && b1 == b2 {
+                        return k;
+                    }
+                }
+            }
             if let (Some(base), Some(arg)) = (as_number(arena, base), as_number(arena, arg)) {
+                if base > 0.0 && base != 1.0 {
+                    if arg == 1.0 {
+                        return push(arena, Node::Number(0.0));
+                    }
+                    if arg == base {
+                        return push(arena, Node::Number(1.0));
+                    }
+                }
                 return push(arena, Node::Number(arg.log(base)));
             }
             push(arena, Node::LogBase(base, arg))
@@ -192,7 +220,7 @@ fn push(arena: &mut Vec<Node>, node: Node) -> u32 {
     idx
 }
 // TODO: improve the docstring and write a doctest
-/// Returns **Some(f64)** if the node at `idx` is **NodeKind::Number**, else **None**\
+/// Returns f64 if the node at `idx` is `NodeKind::Number`, else `None`
 /// Only applies to literal Number nodes — not Constants
 #[inline(always)]
 fn as_number(arena: &[Node], idx: u32) -> Option<f64> {
@@ -203,16 +231,10 @@ fn as_number(arena: &[Node], idx: u32) -> Option<f64> {
 }
 
 // TODO: improve the docstring and write a doctest
-/// Shared helper for all unary function nodes: simplify the argument,
-/// constant-fold via `f` if it resolved to a Number, otherwise rebuild
-/// the node (via `ctor`) pointing at the simplified argument.
+/// Shared helper for all unary function nodes: simplify the argument, constant-fold via `f` if it resolved to a Number, otherwise rebuild the node (via `ctor`) pointing at the simplified argument.
+#[rustfmt::skip]
 #[inline(always)]
-fn simplify_unary(
-    arena: &mut Vec<Node>,
-    arg: u32,
-    ctor: fn(u32) -> Node,
-    f: fn(f64) -> f64,
-) -> u32 {
+fn simplify_unary(arena: &mut Vec<Node>, arg: u32, ctor: fn(u32) -> Node, f: fn(f64) -> f64) -> u32 {
     let arg = simplify(arena, arg);
     if let Some(v) = as_number(arena, arg) {
         return push(arena, Node::Number(f(v)));
@@ -380,5 +402,30 @@ mod tests {
         // x(0) parses as x*0 since our parser fix; should fold to 0 too.
         let (arena, root) = run("x(0)");
         assert_number(&arena, root, 0.0);
+    }
+
+    #[test]
+    fn test_log_base_power_numeric_valid() {
+        let (arena, root) = run("log_2(2^5)");
+        assert_number(&arena, root, 5.0);
+    }
+
+    #[test]
+    fn test_log_base_power_base_one_not_folded() {
+        // 1^5 = 1, but log_1(1) is indeterminate — must NOT fold to 5.
+        let (arena, root) = run("log_1(1^5)");
+        match arena[root as usize] {
+            Node::LogBase(_, _) => {}
+            ref other => panic!("expected LogBase left unsimplified, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_log_base_power_symbolic_not_folded() {
+        let (arena, root) = run("log_y(y^k)");
+        match arena[root as usize] {
+            Node::LogBase(_, _) => {}
+            ref other => panic!("expected LogBase left unsimplified, got {other:?}"),
+        }
     }
 }

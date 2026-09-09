@@ -514,7 +514,7 @@ fn main() {
         if expression == "evaluate" {
             match &pending {
                 None => {
-                    eprintln!("Error: nothing to evaluate — enter an equation first.");
+                    eprintln!("Error: Nothing to evaluate — enter an equation first.");
                 }
                 Some(p) => match evaluate_pending(&p.arena, p.root, &vars, &p.src) {
                     Err(e) => eprintln!("Error: {e}"),
@@ -656,11 +656,7 @@ fn main() {
 
         arena.clear();
         // TODO: shorten the following comment
-        // Reserve before parsing: node count can never exceed token count, so
-        // this single reserve eliminates all the repeated grow-reallocations
-        // that dhat PP 1.1.1 flagged (6 allocs across recursive parse_expr calls).
-        // On subsequent REPL iterations the Vec already has sufficient capacity
-        // and reserve() becomes a no-op — no wasted work.
+        // Reserve before parsing: node count can never exceed token count, so this single reserve eliminates all the repeated grow-reallocations that dhat PP 1.1.1 flagged (6 allocs across recursive parse_expr calls). On subsequent REPL iterations the Vec already has sufficient capacity and reserve() becomes a no-op — no wasted work.
         arena.reserve(tokens.len());
         let root = match Parser::new(&tokens, expression, &mut arena).parse() {
             Err(e) => {
@@ -671,7 +667,7 @@ fn main() {
                 }
                 continue;
             }
-            Ok(r) => r,
+            Ok(root) => root,
         };
 
         if should_print && flags.ast {
