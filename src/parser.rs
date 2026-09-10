@@ -107,6 +107,8 @@ pub struct Parser<'src, 'arena> {
 }
 
 impl<'src, 'arena> Parser<'src, 'arena> {
+    /// # Safety:
+    /// `tokens` must come from a successful `Tokenizer::tokenize()` call (ending in exactly one `Token::EndOfFile`) - `consume()` and `peek()` are unchecked and rely on that to stay in bounds.
     pub fn new(tokens: &'src [Token], src: &'src str, arena: &'arena mut Vec<Node>) -> Self {
         Parser {
             tokens,
@@ -201,15 +203,13 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     ///     - otherwise → implicit multiplication (`x(3)` → `x*3`).
     ///   - otherwise → a plain variable reference.
     ///
-    /// 3. `Token::Minus` — unary negation, binds tighter than `*` or `/` but
-    ///   looser than `^` (see the `25` binding power).
+    /// 3. `Token::Minus` — unary negation, binds tighter than `*` or `/` but looser than `^` (see the `25` binding power).
     ///
     /// 4. `Token::LeftParenthesis` — parses a fully parenthesized sub-expression.
     ///
     /// # Errors
     /// Returns `Err` if:
-    /// 1. The current token can't start an expression (e.g. an infix operator
-    ///   or `EndOfFile` in prefix position).
+    /// 1. The current token can't start an expression (e.g. an infix operator or `EndOfFile` in prefix position).
     /// 2. A number literal fails to parse.
     /// 3. A `log_` call's base is invalid.
     #[inline(always)]

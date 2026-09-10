@@ -32,6 +32,14 @@ impl VariableBank {
     /// If `hash` is already present, its value is overwritten in place. Otherwise a new entry is appended.
     ///
     /// Returns `Err` if `VariableBank` has already reached `VARIABLE_LIMIT`.
+    ///
+    /// # Safety
+    /// Uses unchecked indexing internally, relying on the struct invariant `self.len <= VARIABLE_LIMIT == self.entries.len()`.
+    ///
+    /// This holds as long as `len` is only ever mutated through `VariableBank`'s provided methods.
+    ///
+    /// **DO NOT** construct or mutate a `VariableBank` in ways that bypass them.
+    ///
     /// # Examples
     /// ```ignore
     /// let mut bank = VariableBank::new();
@@ -42,7 +50,7 @@ impl VariableBank {
     /// ```
     #[inline(always)]
     pub fn set(&mut self, hash: u64, value: f64) -> Result<(), String> {
-        if let Some(entry) = self.entries[..self.len]
+        if let Some(entry) = unsafe { self.entries.get_unchecked_mut(..self.len) }
             .iter_mut()
             .find(|(h, _)| *h == hash)
         {
@@ -52,7 +60,9 @@ impl VariableBank {
         if self.len >= VARIABLE_LIMIT {
             return Err(variable_limit_reached_err());
         }
-        self.entries[self.len] = (hash, value);
+        unsafe {
+            *self.entries.get_unchecked_mut(self.len) = (hash, value);
+        }
         self.len += 1;
         Ok(())
     }
@@ -60,6 +70,13 @@ impl VariableBank {
     /// Returns the value bound to `hash`; otherwise, returns `None`.
     ///
     /// Performs a linear scan over the filled portion of the inline array.
+    ///
+    /// # Safety
+    /// Uses unchecked indexing internally, relying on the struct invariant `self.len <= VARIABLE_LIMIT == self.entries.len()`.
+    ///
+    /// This holds as long as `len` is only ever mutated through `VariableBank`'s provided methods.
+    ///
+    /// **DO NOT** construct or mutate a `VariableBank` in ways that bypass them.
     ///
     /// # Examples
     /// ```ignore
@@ -71,7 +88,7 @@ impl VariableBank {
     /// ```
     #[inline(always)]
     pub fn get(&self, hash: u64) -> Option<f64> {
-        self.entries[..self.len]
+        unsafe { self.entries.get_unchecked(..self.len) }
             .iter()
             .find(|(h, _)| *h == hash)
             .map(|(_, v)| *v)
@@ -217,6 +234,9 @@ impl VariableList {
 
     /// Keeps only the entries for which `f` returns `true`, removing the rest in place and compacting the array (like `Vec::retain`, but without any allocation or shifting beyond a single in-place pass).
     ///
+    /// # Safety
+    /// Uses unchecked indexing internally. Sound since `i < self.len` and `out <= i` stay within `self.len <= VARIABLE_LIMIT == self.entries.len()`
+    ///
     /// # Examples
     /// ```ignore
     /// let mut list = VariableList::new();
@@ -227,9 +247,11 @@ impl VariableList {
     pub fn retain(&mut self, mut f: impl FnMut(&(u64, u32, u32)) -> bool) {
         let mut out = 0;
         for i in 0..self.len {
-            let entry = self.entries[i];
+            let entry = unsafe { *self.entries.get_unchecked(i) };
             if f(&entry) {
-                self.entries[out] = entry;
+                unsafe {
+                    *self.entries.get_unchecked_mut(out) = entry;
+                }
                 out += 1;
             }
         }
@@ -239,13 +261,18 @@ impl VariableList {
     /// Appends `(hash, start, end)` if `hash` isn't already present.
     ///
     /// If the `VariableList` has reached `VARIABLE_LIMIT`, sets `overflowed` and drops the entry instead of appending.
+    ///
+    /// # Safety
+    /// Uses unchecked indexing internally. Sound since the write is guarded by `self.len < VARIABLE_LIMIT` which stays within `self.len <= VARIABLE_LIMIT == self.entries.len()`
     #[inline(always)]
     fn push_unique(&mut self, hash: u64, start: u32, end: u32) {
         if self.iter().any(|(h, _, _)| *h == hash) {
             return;
         }
         if self.len < VARIABLE_LIMIT {
-            self.entries[self.len] = (hash, start, end);
+            unsafe {
+                *self.entries.get_unchecked_mut(self.len) = (hash, start, end);
+            }
             self.len += 1;
         } else {
             self.overflowed = true;

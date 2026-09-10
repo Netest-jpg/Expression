@@ -79,11 +79,11 @@ pub fn evaluate(arena: &[Node], idx: u32, vars: &VariableBank) -> Result<f64, Ev
 // TODO: write a docstring and doctest
 #[rustfmt::skip]
 pub fn try_simple_assign(arena: &[Node], root: u32, vars: &mut VariableBank) -> Result<Option<(u32, u32, f64)>, String> {
-    let Node::Equation(lhs, rhs) = &arena[root as usize] else {
+    let Node::Equation(lhs, rhs) = (unsafe { arena.get_unchecked(root as usize) }) else {
         return Ok(None);
     };
     let (lhs, rhs) = (*lhs, *rhs);
-    let (var_start, var_end, var_hash) = match &arena[lhs as usize] {
+    let (var_start, var_end, var_hash) = match unsafe { arena.get_unchecked(lhs as usize)} {
         Node::Variable(start, end, hash) => (*start, *end, *hash),
         _ => return Ok(None),
     };
@@ -119,7 +119,7 @@ pub enum EvaluationResult {
 // TODO: write a docstring and doctest
 #[rustfmt::skip]
 pub fn evaluate_pending(arena: &[Node], root: u32, vars: &VariableBank, src: &str) -> Result<EvaluationResult, String> {
-    let (lhs_idx, rhs_idx) = match &arena[root as usize] {
+    let (lhs_idx, rhs_idx) = match unsafe{ arena.get_unchecked(root as usize) } {
         Node::Equation(l, r) => (*l, *r),
         _ => {
             let v = evaluate(arena, root, vars).map_err(|e| e.to_string_msg())?;
@@ -145,7 +145,7 @@ pub fn evaluate_pending(arena: &[Node], root: u32, vars: &VariableBank, src: &st
 
         1 => {
             let (unknown_hash, start, end) = free[0];
-            let name = src[start as usize..end as usize].to_string();
+            let name = unsafe{ src.get_unchecked(start as usize..end as usize) }.to_string();
 
             let mut probe = vars.fork_probe(unknown_hash);
             let mut f = |x: f64| -> Result<f64, String> {
@@ -192,7 +192,7 @@ pub fn evaluate_pending(arena: &[Node], root: u32, vars: &VariableBank, src: &st
                 if i > 0 {
                     msg.push_str(", ");
                 }
-                msg.push_str(&src[*start as usize..*end as usize]);
+                msg.push_str(unsafe{ src.get_unchecked(*start as usize..*end as usize) });
             }
             msg.push_str(
                 ".\nAssign values with  name=value  or leave exactly one free for solving.",

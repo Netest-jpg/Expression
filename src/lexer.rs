@@ -343,7 +343,7 @@ impl Token {
     ///
     /// Violating either condition will result in undefined behavior.
     #[inline(always)]
-    unsafe fn slice_unchecked<'src>(src: &'src str, start: u32, end: u32) -> &'src str {
+    unsafe fn slice_unchecked(src: &str, start: u32, end: u32) -> &str {
         unsafe { src.get_unchecked(start as usize..end as usize) }
     }
 }

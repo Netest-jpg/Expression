@@ -93,7 +93,7 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
             }
             push(arena, Node::Mul(a, b))
         }
-
+        #[rustfmt::skip]
         Node::Div(a, b) => {
             let a = simplify(arena, a);
             let b = simplify(arena, b);
@@ -102,10 +102,8 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
             // infinity, or undefined for 0/0) — leaving it unsimplified
             // is the mathematically honest choice. eval() already handles
             // the numeric case via plain f64 semantics.
-            if let (Some(x), Some(y)) = (as_number(arena, a), as_number(arena, b)) {
-                if y != 0.0 {
-                    return push(arena, Node::Number(x / y));
-                }
+            if let (Some(x), Some(y)) = (as_number(arena, a), as_number(arena, b)) && y != 0.0 {
+                return push(arena, Node::Number(x / y));
             }
             if is_one(arena, b) {
                 return a; // x / 1 -> x
@@ -113,6 +111,7 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
             push(arena, Node::Div(a, b))
         }
 
+        #[rustfmt::skip]
         Node::Pow(base, exponent) => {
             let base = simplify(arena, base);
             let exponent = simplify(arena, exponent);
@@ -126,15 +125,12 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
             if is_one(arena, exponent) {
                 return base; // x^1 -> x
             }
-            if let Node::LogBase(log_base, arg) = arena[exponent as usize] {
-                if let (Node::Number(b1), Node::Number(b2)) =
-                    (&arena[exponent as usize], &arena[log_base as usize])
-                {
-                    if *b2 > 0.0 && *b2 != 1.0 && b1 == b2 {
-                        return arg; // b^log_b(k)=k where, b is a Number
-                    }
+            if let Node::LogBase(log_base, arg) = arena[exponent as usize]
+                && let (Node::Number(b1), Node::Number(b2)) = (&arena[exponent as usize], &arena[log_base as usize])
+                && (*b2 > 0.0 && *b2 != 1.0 && b1 == b2) {
+                    return arg; // b^log_b(k)=k where, b is a Number
                 }
-            }
+
             push(arena, Node::Pow(base, exponent))
         }
 
@@ -182,19 +178,16 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
 
         Node::Ln(a) => simplify_unary(arena, a, Node::Ln, f64::ln),
         Node::Log(a) => simplify_unary(arena, a, Node::Log, f64::log10),
+        #[rustfmt::skip]
         Node::LogBase(base, arg) => {
             let base = simplify(arena, base);
             let arg = simplify(arena, arg);
-            // log_b(b^k) -> k
-            if let Node::Pow(inner_base, k) = arena[arg as usize] {
-                if let (Node::Number(b1), Node::Number(b2)) =
-                    (&arena[base as usize], &arena[inner_base as usize])
-                {
-                    if *b1 > 0.0 && *b1 != 1.0 && b1 == b2 {
-                        return k;
-                    }
+            if let Node::Pow(inner_base, k) = arena[arg as usize]
+                && let (Node::Number(b1), Node::Number(b2)) = (&arena[base as usize], &arena[inner_base as usize])
+                && (*b1 > 0.0 && *b1 != 1.0 && b1 == b2){
+                    return k; // log_b(b^k) -> k
                 }
-            }
+
             if let (Some(base), Some(arg)) = (as_number(arena, base), as_number(arena, arg)) {
                 if base > 0.0 && base != 1.0 {
                     if arg == 1.0 {
