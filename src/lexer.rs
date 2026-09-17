@@ -191,6 +191,11 @@ pub enum Token {
     EndOfFile,
 }
 
+pub const BP_EQUALS: u8 = 5;
+pub const BP_ADD: u8 = 10;
+pub const BP_MUL: u8 = 20;
+pub const BP_EXP: u8 = 30;
+
 impl Token {
     /// Returns the Left Binding Power (LBP) of a [`Token`]
     ///
@@ -200,11 +205,11 @@ impl Token {
     #[inline(always)]
     pub fn lbp(&self) -> u8 {
         match self {
-            Token::Equals => 5,
-            Token::Plus | Token::Minus => 10,
-            Token::Multiply | Token::Divide => 20,
-            Token::Exponent => 30,
-            Token::LeftParenthesis => 20, // implicit multiply x(0) -> x*0
+            Token::Equals => BP_EQUALS,
+            Token::Plus | Token::Minus => BP_ADD,
+            Token::Multiply | Token::Divide => BP_MUL,
+            Token::Exponent => BP_EXP,
+            Token::LeftParenthesis => BP_MUL, // implicit multiply x(0) -> x*0
             // Number, Variable, RightParenthesis, EndOfFile
             _ => 0,
         }
@@ -217,10 +222,10 @@ impl Token {
     #[inline(always)]
     pub fn rbp(&self) -> u8 {
         match self {
-            Token::Equals => 4,
-            Token::Plus | Token::Minus => 10,
-            Token::Multiply | Token::Divide => 20,
-            Token::Exponent => 29,
+            Token::Equals => BP_EQUALS - 1,
+            Token::Plus | Token::Minus => BP_ADD,
+            Token::Multiply | Token::Divide => BP_MUL,
+            Token::Exponent => BP_EXP - 1,
             // Number, Variable, LeftParenthesis, RightParenthesis, EndOfFile
             _ => 0,
         }

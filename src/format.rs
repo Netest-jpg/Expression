@@ -1,4 +1,4 @@
-use expression::lexer::Token;
+use expression::lexer::{BP_ADD, BP_EXP, BP_MUL, Token};
 use expression::parser::Node;
 use std::io::Write;
 
@@ -47,7 +47,6 @@ pub fn write_tokens<W: Write>(out: &mut W, tokens: &[Token], src: &str, verbose:
     Ok(())
 }
 
-// TODO: write a docstring and doctest
 #[inline(always)]
 pub fn write_value<W: Write>(out: &mut W, value: f64) -> std::io::Result<()> {
     if value.fract() == 0.0 && value.abs() < 1e15 {
@@ -59,13 +58,6 @@ pub fn write_value<W: Write>(out: &mut W, value: f64) -> std::io::Result<()> {
     }
 }
 
-// TODO: improve the docstring and write a doctest
-/// Recursively renders the subtree rooted at `idx` into actual expression
-/// text. Unlike `write_node_compact`, which formats a single node and
-/// prints child indices as literal `n{idx}` text (fine for the `show ast`
-/// arena dump, where each line is meant to reference others by index),
-/// this walks the whole subtree so callers get a real, human-readable
-/// expression rather than leaked internal arena indices.
 #[rustfmt::skip]
 pub fn write_node_recursive<W: Write>(out: &mut W, idx: u32, arena: &[Node], src: &str) -> std::io::Result<()> {
     match &arena[idx as usize] {
@@ -94,33 +86,33 @@ pub fn write_node_recursive<W: Write>(out: &mut W, idx: u32, arena: &[Node], src
         }
         Node::Add(a, b) => {
             let (a, b) = (*a, *b);
-            write_node_recursive(out, a, arena, src)?;
+            write_child(out, a, arena, src, BP_ADD, Side::Left)?;
             write!(out, " + ")?;
-            write_node_recursive(out, b, arena, src)
+            write_child(out, b, arena, src, BP_ADD, Side::Right)
         }
         Node::Sub(a, b) => {
             let (a, b) = (*a, *b);
-            write_node_recursive(out, a, arena, src)?;
+            write_child(out, a, arena, src, BP_ADD, Side::Left)?;
             write!(out, " - ")?;
-            write_node_recursive(out, b, arena, src)
+            write_child(out, b, arena, src, BP_ADD, Side::Right)
         }
         Node::Mul(a, b) => {
             let (a, b) = (*a, *b);
-            write_node_recursive(out, a, arena, src)?;
+            write_child(out, a, arena, src, BP_MUL, Side::Left)?;
             write!(out, " * ")?;
-            write_node_recursive(out, b, arena, src)
+            write_child(out, b, arena, src, BP_MUL, Side::Right)
         }
         Node::Div(a, b) => {
             let (a, b) = (*a, *b);
-            write_node_recursive(out, a, arena, src)?;
+            write_child(out, a, arena, src, BP_MUL, Side::Left)?;
             write!(out, " / ")?;
-            write_node_recursive(out, b, arena, src)
+            write_child(out, b, arena, src, BP_MUL, Side::Right)
         }
         Node::Pow(a, b) => {
             let (a, b) = (*a, *b);
-            write_node_recursive(out, a, arena, src)?;
+            write_child(out, a, arena, src, BP_EXP, Side::Left)?;
             write!(out, " ^ ")?;
-            write_node_recursive(out, b, arena, src)
+            write_child(out, b, arena, src, BP_EXP, Side::Right)
         }
 
         Node::Sin(a) => write_unary_recursive(out, "sin", *a, arena, src),
@@ -158,7 +150,7 @@ pub fn write_node_recursive<W: Write>(out: &mut W, idx: u32, arena: &[Node], src
         Node::Acoth(a) => write_unary_recursive(out, "acoth", *a, arena, src),
     }
 }
-// TODO: write a docstring and doctest
+
 #[rustfmt::skip]
 pub fn write_arena<W: Write>(out: &mut W, root: u32, arena: &[Node], src: &str, verbose: bool) -> std::io::Result<()> {
     write!(out, "AST root: n{root}\nAST arena:")?;
@@ -173,7 +165,58 @@ pub fn write_arena<W: Write>(out: &mut W, root: u32, arena: &[Node], src: &str, 
     Ok(())
 }
 
-// TODO: write a docstring and doctest
+#[derive(Clone, Copy, PartialEq)]
+enum Side {
+    Left,
+    Right,
+}
+
+fn node_bp(node: &Node) -> Option<u8> {
+    match node {
+        Node::Add(_, _) | Node::Sub(_, _) => Some(BP_ADD),
+        Node::Mul(_, _) | Node::Div(_, _) => Some(BP_MUL),
+        Node::Pow(_, _) => Some(BP_EXP),
+        _ => None,
+    }
+}
+
+fn write_child<W: Write>(
+    out: &mut W,
+    idx: u32,
+    arena: &[Node],
+    src: &str,
+    parent_bp: u8,
+    side: Side,
+) -> std::io::Result<()> {
+    let needs_parens = match node_bp(&arena[idx as usize]) {
+        None => false,
+        Some(child_bp) => {
+            if child_bp < parent_bp {
+                true
+            } else if child_bp > parent_bp {
+                false
+            } else {
+                if parent_bp == BP_EXP {
+                    side == Side::Left
+                } else {
+                    // Still need parens for Sub/Div . Specifically on the right,
+                    // since a - (b - c) != (a - b) - c and a / (b / c) != (a / b) / c, even though both share BP_ADD / BP_MUL with + and *.
+                    let child_is_non_assoc =
+                        matches!(arena[idx as usize], Node::Sub(_, _) | Node::Div(_, _));
+                    child_is_non_assoc && side == Side::Right
+                }
+            }
+        }
+    };
+    if needs_parens {
+        write!(out, "(")?;
+        write_node_recursive(out, idx, arena, src)?;
+        write!(out, ")")
+    } else {
+        write_node_recursive(out, idx, arena, src)
+    }
+}
+
 fn write_node_compact<W: Write>(out: &mut W, node: &Node, src: &str) -> std::io::Result<()> {
     match node {
         Node::Number(v) => write_value(out, *v),
@@ -232,7 +275,6 @@ fn write_node_compact<W: Write>(out: &mut W, node: &Node, src: &str) -> std::io:
     }
 }
 
-// TODO: write a docstring and doctest
 fn write_node_verbose<W: Write>(out: &mut W, node: &Node, src: &str) -> std::io::Result<()> {
     match node {
         Node::Number(v) => {
@@ -293,7 +335,6 @@ fn write_node_verbose<W: Write>(out: &mut W, node: &Node, src: &str) -> std::io:
     }
 }
 
-// TODO: write a docstring and doctest
 #[rustfmt::skip]
 #[inline(always)]
 fn write_unary_recursive<W: Write>(out: &mut W, name: &str, a: u32, arena: &[Node], src: &str) -> std::io::Result<()> {
@@ -302,7 +343,6 @@ fn write_unary_recursive<W: Write>(out: &mut W, name: &str, a: u32, arena: &[Nod
     write!(out, ")")
 }
 
-// TODO: write a docstring and doctest
 #[rustfmt::skip]
 fn write_log_base_recursive<W: Write>(out: &mut W, base: u32, arg: u32, arena: &[Node], src: &str) -> std::io::Result<()> {
     write!(out, "log_")?;
@@ -318,7 +358,6 @@ fn write_log_base_recursive<W: Write>(out: &mut W, base: u32, arg: u32, arena: &
     write!(out, ")")
 }
 
-// TODO: write a docstring and doctest
 fn is_log_base_atomic(node: &Node) -> bool {
     matches!(
         node,

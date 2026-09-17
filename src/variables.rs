@@ -8,8 +8,7 @@ fn variable_limit_reached_err() -> String {
 }
 
 pub struct VariableBank {
-    entries: [(u64, f64); VARIABLE_LIMIT], // stores (hash, value)
-    // fixed stack/inline array — no heap
+    entries: [(u64, f64); VARIABLE_LIMIT],
     len: usize,
 }
 
@@ -33,13 +32,6 @@ impl VariableBank {
     ///
     /// Returns `Err` if `VariableBank` has already reached `VARIABLE_LIMIT`.
     ///
-    /// # Safety
-    /// Uses unchecked indexing internally, relying on the struct invariant `self.len <= VARIABLE_LIMIT == self.entries.len()`.
-    ///
-    /// This holds as long as `len` is only ever mutated through `VariableBank`'s provided methods.
-    ///
-    /// **DO NOT** construct or mutate a `VariableBank` in ways that bypass them.
-    ///
     /// # Examples
     /// ```ignore
     /// let mut bank = VariableBank::new();
@@ -50,7 +42,7 @@ impl VariableBank {
     /// ```
     #[inline(always)]
     pub fn set(&mut self, hash: u64, value: f64) -> Result<(), String> {
-        if let Some(entry) = unsafe { self.entries.get_unchecked_mut(..self.len) }
+        if let Some(entry) = self.entries[..self.len]
             .iter_mut()
             .find(|(h, _)| *h == hash)
         {
@@ -60,9 +52,7 @@ impl VariableBank {
         if self.len >= VARIABLE_LIMIT {
             return Err(variable_limit_reached_err());
         }
-        unsafe {
-            *self.entries.get_unchecked_mut(self.len) = (hash, value);
-        }
+        self.entries[self.len] = (hash, value);
         self.len += 1;
         Ok(())
     }
@@ -70,13 +60,6 @@ impl VariableBank {
     /// Returns the value bound to `hash`; otherwise, returns `None`.
     ///
     /// Performs a linear scan over the filled portion of the inline array.
-    ///
-    /// # Safety
-    /// Uses unchecked indexing internally, relying on the struct invariant `self.len <= VARIABLE_LIMIT == self.entries.len()`.
-    ///
-    /// This holds as long as `len` is only ever mutated through `VariableBank`'s provided methods.
-    ///
-    /// **DO NOT** construct or mutate a `VariableBank` in ways that bypass them.
     ///
     /// # Examples
     /// ```ignore
@@ -88,7 +71,7 @@ impl VariableBank {
     /// ```
     #[inline(always)]
     pub fn get(&self, hash: u64) -> Option<f64> {
-        unsafe { self.entries.get_unchecked(..self.len) }
+        self.entries[..self.len]
             .iter()
             .find(|(h, _)| *h == hash)
             .map(|(_, v)| *v)
@@ -110,13 +93,17 @@ impl VariableBank {
         self.len = 0;
     }
 
-    /// Returns a copy of this bank with `hash`'s slot reset to `0.0` — or, if `hash` isn't present yet, a new slot for it appended and set to `0.0`.
+    /// Returns a copy of `VariableBank` with `hash`'s slot reset to `0.0` — or, if `hash` isn't present yet, a new slot for it appended and set to `0.0`.
     ///
-    /// Call `set_last()` each iteration to update that value. This is the allocation strategy the Newton solver relies on:
+    /// Call [`set_last`] each iteration to update that value. This is the allocation strategy the Newton solver relies on:
     /// one stack copy of the bank before the loop starts, then a single `f64` write per iteration inside the loop — no heap allocations for the whole solve.
     ///
     /// # Panics
-    /// Panics if `hash` isn't an existing entry and the bank is already at `VARIABLE_LIMIT` capacity.
+    /// - Panics (debug builds) if `hash` is already bound in `self`. `set_last` always writes to the
+    ///   *last* slot, so probing an already-bound hash would silently corrupt that hash's real value
+    ///   instead of updating the probe — callers must only probe genuinely unbound variables (see
+    ///   `evaluate_pending`, which filters `free` down to unbound hashes before calling this).
+    /// - Panics if the bank is already at `VARIABLE_LIMIT` capacity.
     ///
     /// # Examples
     /// ```ignore
@@ -126,6 +113,10 @@ impl VariableBank {
     /// assert_eq!(trial.get(99), Some(1.5));
     /// ```
     pub fn fork_probe(&self, hash: u64) -> VariableBank {
+        debug_assert!(
+            self.get(hash).is_none(),
+            "fork_probe called on an already-bound hash; set_last would silently corrupt it"
+        );
         let mut probe = VariableBank {
             entries: self.entries,
             len: self.len,
@@ -232,10 +223,9 @@ impl VariableList {
         self.entries[..self.len].iter()
     }
 
-    /// Keeps only the entries for which `f` returns `true`, removing the rest in place and compacting the array (like `Vec::retain`, but without any allocation or shifting beyond a single in-place pass).
+    /// Keeps only the entries for which `f` (Condition) returns `true`, lazily.
     ///
-    /// # Safety
-    /// Uses unchecked indexing internally. Sound since `i < self.len` and `out <= i` stay within `self.len <= VARIABLE_LIMIT == self.entries.len()`
+    /// Entries are compacted in place: retained entries are moved to the front `(index 0)` in their original order, and `len` is shrunk to match.
     ///
     /// # Examples
     /// ```ignore
@@ -247,11 +237,9 @@ impl VariableList {
     pub fn retain(&mut self, mut f: impl FnMut(&(u64, u32, u32)) -> bool) {
         let mut out = 0;
         for i in 0..self.len {
-            let entry = unsafe { *self.entries.get_unchecked(i) };
+            let entry = self.entries[i];
             if f(&entry) {
-                unsafe {
-                    *self.entries.get_unchecked_mut(out) = entry;
-                }
+                self.entries[out] = entry;
                 out += 1;
             }
         }
@@ -270,9 +258,7 @@ impl VariableList {
             return;
         }
         if self.len < VARIABLE_LIMIT {
-            unsafe {
-                *self.entries.get_unchecked_mut(self.len) = (hash, start, end);
-            }
+            self.entries[self.len] = (hash, start, end);
             self.len += 1;
         } else {
             self.overflowed = true;

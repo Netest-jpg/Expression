@@ -1,46 +1,33 @@
 #![allow(dead_code)]
 use crate::parser::Node;
-// TODO: read and understand this. Delete it later.
-// Simplify — bottom-up rewrite of the AST arena.
-//
-// Mirrors eval.rs structurally: same recursive shape, same arena-walking
-// pattern. The difference is what gets returned at each node — eval()
-// returns a computed f64, simplify() returns a u32 (the index of the
-// simplified subtree's root), and may push new nodes onto the arena
-// rather than just reading existing ones.
-//
-// Traversal order: children are simplified first (recurse to leaves),
-// then the current node is checked against the rule set using the
-// *already-simplified* children. This means a rule never has to look
-// through an unsimplified subtree — by the time a parent checks
-// "is my child the Number 0?", that child has already been folded as
-// far as it can go.
-//
-// Append-only: simplify never mutates or removes existing arena entries.
-// A rewrite is just "push a new node, return its index." This keeps the
-// function safe to call independently of eval/parser and avoids any
-// need to track liveness or free old nodes.
-
-// TODO: write a docstring and doctest
+/// Recursively simplifies the expression subtree rooted at `root`: applies constant folding
+/// and algebraic identities from bottom-up, and returns the arena index of the result.
+///
+/// New nodes are pushed onto the end of `arena` rather than overwriting old ones, so the
+/// original subtree at `root` is left intact but unreachable. Clone the arena first if you
+/// need to keep the pre-simplified tree around.
+///
+/// This is a single bottom-up pass, not a fixed-point loop — expressions needing more than
+/// one round of folding may come out only partially simplified.
+///
+/// # Example
+/// ```ignore
+/// // "2*x*0+1" -> 1
+/// let simplified_root = simplify(&mut arena, root);
+/// assert_eq!(arena[simplified_root as usize], Node::Number(1.0));
+/// ```
 pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
-    // Clone the kind up front: arena is about to be mutated by recursive
-    // calls (which push new nodes), so we can't hold a borrow into it
-    // across those calls. NodeKind is cheap to clone (u32/u64/f64 fields).
     let kind = arena[root as usize].clone();
-
     match kind {
-        // returns as-is, since it's already in the simplest form.
         Node::Number(_) | Node::Constant(_) | Node::Variable(_, _, _) => root,
 
         Node::Neg(a) => {
             let a = simplify(arena, a);
-            // Double negation: -(-x) -> x
             if let Node::Neg(inner) = arena[a as usize] {
-                return inner;
+                return inner; // -(-x) -> x
             }
-            // Constant fold: -(n) -> -n
             if let Some(v) = as_number(arena, a) {
-                return push(arena, Node::Number(-v));
+                return push(arena, Node::Number(-v)); // -(n) -> -n
             }
             push(arena, Node::Neg(a))
         }
@@ -49,7 +36,7 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
             let a = simplify(arena, a);
             let b = simplify(arena, b);
             if let (Some(x), Some(y)) = (as_number(arena, a), as_number(arena, b)) {
-                return push(arena, Node::Number(x + y));
+                return push(arena, Node::Number(x + y)); // 2 + 3 -> 5
             }
             if is_zero(arena, a) {
                 return b; // 0 + x -> x
@@ -64,7 +51,7 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
             let a = simplify(arena, a);
             let b = simplify(arena, b);
             if let (Some(x), Some(y)) = (as_number(arena, a), as_number(arena, b)) {
-                return push(arena, Node::Number(x - y));
+                return push(arena, Node::Number(x - y)); // 3 - 2 -> 1
             }
             if is_zero(arena, b) {
                 return a; // x - 0 -> x
@@ -76,14 +63,10 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
             let a = simplify(arena, a);
             let b = simplify(arena, b);
             if let (Some(x), Some(y)) = (as_number(arena, a), as_number(arena, b)) {
-                return push(arena, Node::Number(x * y));
+                return push(arena, Node::Number(x * y)); // 3 * 5 -> 15
             }
-            // Annihilator: anything * 0 -> 0. Checked before the identity
-            // rule below since 0 takes priority over 1 if somehow both
-            // matched (they can't both match the same operand, but this
-            // keeps the precedence explicit).
             if is_zero(arena, a) || is_zero(arena, b) {
-                return push(arena, Node::Number(0.0));
+                return push(arena, Node::Number(0.0)); // a * 0 -> 0 || 0 * b -> 0
             }
             if is_one(arena, a) {
                 return b; // 1 * x -> x
@@ -97,13 +80,8 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
         Node::Div(a, b) => {
             let a = simplify(arena, a);
             let b = simplify(arena, b);
-            // Deliberately NOT folding x/0 or n/0 here. Division by zero
-            // has no single correct symbolic rewrite (sign-dependent
-            // infinity, or undefined for 0/0) — leaving it unsimplified
-            // is the mathematically honest choice. eval() already handles
-            // the numeric case via plain f64 semantics.
             if let (Some(x), Some(y)) = (as_number(arena, a), as_number(arena, b)) && y != 0.0 {
-                return push(arena, Node::Number(x / y));
+                return push(arena, Node::Number(x / y)); // 15 / 5 -> 3
             }
             if is_one(arena, b) {
                 return a; // x / 1 -> x
@@ -126,26 +104,19 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
                 return base; // x^1 -> x
             }
             if let Node::LogBase(log_base, arg) = arena[exponent as usize]
-                && let (Node::Number(b1), Node::Number(b2)) = (&arena[exponent as usize], &arena[log_base as usize])
+                && let (Node::Number(b1), Node::Number(b2)) = (&arena[base as usize], &arena[log_base as usize])
                 && (*b2 > 0.0 && *b2 != 1.0 && b1 == b2) {
-                    return arg; // b^log_b(k)=k where, b is a Number
+                    return arg; // b^log_b(k) = k where, b is a Number
                 }
-
             push(arena, Node::Pow(base, exponent))
         }
 
-        // Equation: simplify both sides independently. No identity rules
-        // apply at this level — "lhs = rhs" doesn't fold further itself.
         Node::Equation(a, b) => {
             let a = simplify(arena, a);
             let b = simplify(arena, b);
             push(arena, Node::Equation(a, b))
         }
 
-        // Unary functions: simplify the argument, constant-fold if it
-        // resolved to a Number, otherwise rebuild with the simplified arg.
-        // No special identities here yet (e.g. sin(0)=0) — left for a
-        // later pass once the core loop is validated.
         Node::Sin(a) => simplify_unary(arena, a, Node::Sin, f64::sin),
         Node::Cos(a) => simplify_unary(arena, a, Node::Cos, f64::cos),
         Node::Tan(a) => simplify_unary(arena, a, Node::Tan, f64::tan),
@@ -188,17 +159,17 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
                     return k; // log_b(b^k) -> k
                 }
 
-            if let (Some(base), Some(arg)) = (as_number(arena, base), as_number(arena, arg)) {
-                if base > 0.0 && base != 1.0 {
+            if let (Some(base), Some(arg)) = (as_number(arena, base), as_number(arena, arg))
+                && (base > 0.0 && base != 1.0) {
                     if arg == 1.0 {
-                        return push(arena, Node::Number(0.0));
+                        return push(arena, Node::Number(0.0)); // log_2(1) -> 0
                     }
                     if arg == base {
-                        return push(arena, Node::Number(1.0));
+                        return push(arena, Node::Number(1.0)); // log_2(2) -> 1
                     }
+                    return push(arena, Node::Number(arg.log(base))); // log_2(8) -> 3
                 }
-                return push(arena, Node::Number(arg.log(base)));
-            }
+
             push(arena, Node::LogBase(base, arg))
         }
         Node::Sqrt(a) => simplify_unary(arena, a, Node::Sqrt, f64::sqrt),
@@ -419,6 +390,22 @@ mod tests {
         match arena[root as usize] {
             Node::LogBase(_, _) => {}
             ref other => panic!("expected LogBase left unsimplified, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_pow_log_base_numeric_valid() {
+        // 2^log_2(8) -> 8
+        let (arena, root) = run("2^log_2(8)");
+        assert_number(&arena, root, 8.0);
+    }
+
+    #[test]
+    fn test_pow_log_base_symbolic_not_folded() {
+        let (arena, root) = run("y^log_y(k)");
+        match arena[root as usize] {
+            Node::Pow(_, _) => {}
+            ref other => panic!("expected Pow left unsimplified, got {other:?}"),
         }
     }
 }
