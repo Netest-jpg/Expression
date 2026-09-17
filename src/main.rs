@@ -37,7 +37,6 @@ struct Pending {
 }
 
 impl Pending {
-    // TODO: improve the docstring and write a doctest
     /// Return the names of variables in this equation that are still unbound.
     fn free_var_names<'a>(&'a self, vars: &VariableBank) -> Vec<&'a str> {
         collect_variables(&self.arena, self.root)
@@ -47,7 +46,6 @@ impl Pending {
             .collect()
     }
 
-    // TODO: improve the docstring and write a doctest
     /// Print the current state of this pending equation relative to vars.
     #[rustfmt::skip]
     fn print_status<W: Write>(&self, out: &mut W, vars: &VariableBank) {
@@ -77,7 +75,7 @@ fn main() {
     if is_terminal {
         out.write_all(
             b"Enter a math expression:\n\
-              [ use ':q' to exit ]\n\
+              [ use 'quit' or ':q' to exit ]\n\
               [ use 'evaluate' to solve the pending equation ]\n\
               [ use 'simplify' to simplify the pending equation ]\n\
               [ use 'clear' to reset all variable bindings ]\n\
@@ -121,7 +119,7 @@ fn main() {
             continue;
         }
 
-        if matches!(expression, ":q") {
+        if matches!(expression, "quit" | ":q") {
             if is_terminal {
                 writeln!(out, "process terminated").ok();
             }

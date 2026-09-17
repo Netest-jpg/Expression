@@ -198,10 +198,6 @@ pub const BP_EXP: u8 = 30;
 
 impl Token {
     /// Returns the Left Binding Power (LBP) of a [`Token`]
-    ///
-    /// # Example:
-    /// ```rust
-    /// ```
     #[inline(always)]
     pub fn lbp(&self) -> u8 {
         match self {
@@ -216,9 +212,6 @@ impl Token {
     }
 
     /// Returns the Right Binding Power (RBP) of a [`Token`] for right-associative operators
-    ///
-    /// # Example:
-    ///
     #[inline(always)]
     pub fn rbp(&self) -> u8 {
         match self {

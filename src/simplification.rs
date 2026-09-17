@@ -176,14 +176,13 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
     }
 }
 
-// TODO: write a docstring and doctest
 #[inline(always)]
 fn push(arena: &mut Vec<Node>, node: Node) -> u32 {
     let idx = arena.len() as u32;
     arena.push(node);
     idx
 }
-// TODO: improve the docstring and write a doctest
+
 /// Returns f64 if the node at `idx` is `NodeKind::Number`, else `None`
 /// Only applies to literal Number nodes — not Constants
 #[inline(always)]
@@ -194,7 +193,6 @@ fn as_number(arena: &[Node], idx: u32) -> Option<f64> {
     }
 }
 
-// TODO: improve the docstring and write a doctest
 /// Shared helper for all unary function nodes: simplify the argument, constant-fold via `f` if it resolved to a Number, otherwise rebuild the node (via `ctor`) pointing at the simplified argument.
 #[rustfmt::skip]
 #[inline(always)]
@@ -206,13 +204,11 @@ fn simplify_unary(arena: &mut Vec<Node>, arg: u32, ctor: fn(u32) -> Node, f: fn(
     push(arena, ctor(arg))
 }
 
-// TODO: write a docstring and doctest
 #[inline(always)]
 fn is_zero(arena: &[Node], idx: u32) -> bool {
     matches!(arena[idx as usize], Node::Number(v) if v == 0.0)
 }
 
-// TODO: write a docstring and doctest
 #[inline(always)]
 fn is_one(arena: &[Node], idx: u32) -> bool {
     matches!(arena[idx as usize], Node::Number(v) if v == 1.0)
