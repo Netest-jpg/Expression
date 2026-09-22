@@ -1,5 +1,3 @@
-use fast_float2 as fast_float;
-
 const FNV_OFFSET_BASIS: u64 = 14695981039346656037;
 const FNV_PRIME: u64 = 1099511628211;
 
@@ -303,7 +301,7 @@ impl Token {
     /// ```
     #[inline(always)]
     pub fn as_f64(&self, src: &str) -> f64 {
-        fast_float::parse::<f64, &str>(self.raw(src)).expect("Invalid number")
+        fast_float2::parse::<f64, &str>(self.raw(src)).expect("Invalid number")
     }
 
     /// Returns the raw source text for a `Token::Variable`.
@@ -367,6 +365,7 @@ impl std::fmt::Debug for Token {
 
 pub struct Tokenizer<'src> {
     src: &'src [u8],
+    text: &'src str,
     pos: usize,
 }
 
@@ -374,6 +373,7 @@ impl<'src> Tokenizer<'src> {
     pub fn new(input: &'src str) -> Self {
         Tokenizer {
             src: input.as_bytes(),
+            text: input,
             pos: 0,
         }
     }
@@ -485,7 +485,8 @@ impl<'src> Tokenizer<'src> {
                 }
 
                 Dispatch::Unknown => {
-                    return Err(unknown_character_error(byte));
+                    let character = self.text[self.pos..].chars().next().unwrap();
+                    return Err(unknown_character_error(character));
                 }
             }
         }
@@ -606,8 +607,8 @@ fn no_digit_error() -> String {
 
 #[cold]
 #[inline(never)]
-fn unknown_character_error(byte: u8) -> String {
-    format!("Unknown character: '{}'", byte as char)
+fn unknown_character_error(character: char) -> String {
+    format!("Unknown character: '{}'", character)
 }
 
 #[cfg(test)]
