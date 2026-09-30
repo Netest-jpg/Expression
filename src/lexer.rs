@@ -373,8 +373,6 @@ impl<'src> Tokenizer<'src> {
     pub fn tokenize(&mut self, tokens: &mut Vec<Token>) -> Result<(), String> {
         self.pos = 0;
         tokens.clear();
-        // Typical token is 2-3 chars; src.len()/2+2 avoids the large
-        // over-allocation that src.len()+1 causes for Variable-heavy input.
         let hint = self.src.len() / 2 + 2;
         if tokens.capacity() < hint {
             tokens.reserve(hint - tokens.len());
@@ -574,7 +572,7 @@ fn is_variable(c: u8) -> bool {
     unsafe { (*VARIABLE.get_unchecked(c as usize / 8) >> (c % 8)) & 1 != 0 }
 }
 
-// Error handles
+// Error handles ---------------------------------------------------------------
 #[cold]
 #[inline(never)]
 fn invalid_second_dot_error(src: &[u8], start: u32, pos: usize) -> String {
@@ -596,7 +594,7 @@ fn no_digit_error() -> String {
 fn unknown_character_error(character: char) -> String {
     format!("Unknown character: '{}'", character)
 }
-
+//----------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
     use super::*;

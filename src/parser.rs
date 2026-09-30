@@ -70,7 +70,7 @@ pub struct Parser<'src, 'arena> {
     src: &'src str,
     position: usize,
     arena: &'arena mut Vec<Node>,
-    angle_mode: AngleMode,
+    angle: AngleMode,
 }
 
 impl<'src, 'arena> Parser<'src, 'arena> {
@@ -82,12 +82,13 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             src,
             position: 0,
             arena,
-            angle_mode: AngleMode::default(),
+            angle: AngleMode::default(),
         }
     }
 
-    pub fn with_angle_mode(mut self, mode: AngleMode) -> Self {
-        self.angle_mode = mode;
+    /// Sets the angle unit used when a trig argument has no `Deg`/`Rad` suffix.
+    pub fn with_angle(mut self, mode: AngleMode) -> Self {
+        self.angle = mode;
         self
     }
 
@@ -203,7 +204,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                     self.advance(); // eat '('
                     let mut arg = self.pratt_parse(0)?;
                     if is_forward_trig(hash) {
-                        arg = self.wrap_angle(arg);
+                        arg = self.parse_angle_unit(arg);
                     }
                     self.expect_right_parenthesis()?;
                     if let Some(kind) = function_node(hash, arg) {
@@ -273,7 +274,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         offset_tokens(&mut tokens, base_start);
 
         Parser::new(&tokens, self.src, self.arena)
-            .with_angle_mode(self.angle_mode)
+            .with_angle(self.angle)
             .parse()
     }
 
@@ -367,9 +368,8 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             other => Err(unexpected_infix_error(&other)),
         }
     }
-    /// Called after a forward-trig argument is parsed. Consumes a trailing `Deg`/`Rad`
-    /// if present, otherwise falls back to the parser's default mode.
-    fn wrap_angle(&mut self, arg: u32) -> u32 {
+    /// Called after a forward-trig argument is parsed. Consumes a trailing `Deg`/`Rad` if present, otherwise falls back to the parser's default mode.
+    fn parse_angle_unit(&mut self, arg: u32) -> u32 {
         let unit = match self.peek() {
             Token::Variable { hash, .. } if *hash == KW_DEG => Some(AngleMode::Degrees),
             Token::Variable { hash, .. } if *hash == KW_RAD => Some(AngleMode::Radians),
@@ -380,7 +380,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 self.advance();
                 m
             }
-            None => self.angle_mode,
+            None => self.angle,
         };
         self.push_node(match mode {
             AngleMode::Degrees => Node::Deg(arg),
@@ -733,7 +733,7 @@ mod tests {
         let src = "sin(30)";
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena)
-            .with_angle_mode(AngleMode::Radians)
+            .with_angle(AngleMode::Radians)
             .parse()
             .unwrap();
         let Node::Sin(a) = arena[root as usize] else {

@@ -1,5 +1,5 @@
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
-use expression::evaluation::{evaluate_pending, try_simple_assign};
+use expression::evaluation::{evaluate_or_solve, try_simple_assign};
 use expression::lexer::Tokenizer;
 use expression::parser::{Node, Parser};
 use expression::simplification::simplify;
@@ -62,7 +62,7 @@ fn bench_pending_solve(c: &mut Criterion) {
     let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
     c.bench_function("pending solve", |b| {
         b.iter(|| {
-            let result = evaluate_pending(&arena, root, &vars, src).unwrap();
+            let result = evaluate_or_solve(&arena, root, &vars, src).unwrap();
             black_box(result);
         });
     });

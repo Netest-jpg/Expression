@@ -7,7 +7,7 @@ use expression::parser::{Node, Parser};
 use expression::simplification::simplify;
 use expression::variables::{VariableBank, collect_variables};
 #[rustfmt::skip]
-use expression::evaluation::{EvaluationMessages, EvaluationResult, evaluate, evaluate_pending, try_simple_assign};
+use expression::evaluation::{EvaluationError, EvaluationResult, evaluate, evaluate_or_solve, try_simple_assign};
 mod format;
 use format::{write_arena, write_node_recursive, write_tokens, write_value};
 
@@ -15,20 +15,20 @@ use format::{write_arena, write_node_recursive, write_tokens, write_value};
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
 
-struct DebugFlags {
+struct Settings {
     tokens: bool,
     ast: bool,
     verbose: bool,
     angle: AngleMode,
 }
 
-impl DebugFlags {
+impl Settings {
     fn new() -> Self {
-        DebugFlags {
+        Settings {
             tokens: true,                // on by default
             ast: false,                  // off by default, toggle with 'show ast'
             verbose: false,              // off by default, toggle with 'verbose'
-            angle: AngleMode::default(), // Degrees
+            angle: AngleMode::default(), // Degrees by default
         }
     }
 }
@@ -65,7 +65,7 @@ fn main() {
     #[cfg(feature = "dhat-heap")]
     let _profiler = dhat::Profiler::new_heap();
 
-    let mut flags = DebugFlags::new();
+    let mut flags = Settings::new();
 
     let stdin = std::io::stdin();
     let mut input = std::io::BufReader::with_capacity(1 << 16, stdin.lock());
@@ -167,7 +167,7 @@ fn main() {
                 None => {
                     eprintln!("Error: Nothing to evaluate — enter an equation first.");
                 }
-                Some(p) => match evaluate_pending(&p.arena, p.root, &vars, &p.src) {
+                Some(p) => match evaluate_or_solve(&p.arena, p.root, &vars, &p.src) {
                     Err(e) => eprintln!("Error: {e}"),
                     Ok(result) => match result {
                         EvaluationResult::Value(v) => {
@@ -304,7 +304,7 @@ fn main() {
         arena.reserve(tokens.len());
 
         let root = match Parser::new(&tokens, expression, &mut arena)
-            .with_angle_mode(flags.angle)
+            .with_angle(flags.angle)
             .parse()
         {
             Err(e) => {
@@ -397,7 +397,7 @@ fn main() {
                     }
                     Err(e) => {
                         match e {
-                            EvaluationMessages::UnboundVariable => {
+                            EvaluationError::UnboundVariable => {
                                 if is_terminal {
                                     if let Some(prev) = &pending {
                                         writeln!(out, "  (replacing pending: \"{}\")", prev.src)
@@ -442,7 +442,7 @@ fn main() {
                                 });
                             }
                             other => {
-                                eprintln!("Error: {}", other.to_string_msg());
+                                eprintln!("Error: {}", other);
                             }
                         }
                     }

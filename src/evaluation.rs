@@ -2,31 +2,35 @@ use crate::parser::Node;
 use crate::variables::{VARIABLE_LIMIT, VariableBank, collect_variables};
 
 #[derive(Debug)]
-pub enum EvaluationMessages {
+pub enum EvaluationError {
     UnboundVariable,
     IsEquation,
 }
 
-impl EvaluationMessages {
-    pub fn to_string_msg(&self) -> String {
+impl std::fmt::Display for EvaluationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            EvaluationMessages::UnboundVariable => "Unbound variable".to_string(),
-            EvaluationMessages::IsEquation => "Use 'evaluate' to evaluate an equation".to_string(),
+            EvaluationError::UnboundVariable => write!(f, "Unbound variable"),
+            EvaluationError::IsEquation => {
+                write!(f, "Use 'evaluate' to evaluate an equation")
+            }
         }
     }
 }
 
+impl std::error::Error for EvaluationError {}
+
 /// Evaluates an expression if all variables are in-bound and returns the result as `f64`.
 ///
 /// Returns `Err` via `EvaluationMessages` if there are any unbound variables or `Node::Equation`.
-pub fn evaluate(arena: &[Node], idx: u32, vars: &VariableBank) -> Result<f64, EvaluationMessages> {
+pub fn evaluate(arena: &[Node], idx: u32, vars: &VariableBank) -> Result<f64, EvaluationError> {
     match &arena[idx as usize] {
         Node::Number(v) => Ok(*v),
         Node::Constant(v) => Ok(*v),
 
-        Node::Variable(_, _, hash) => vars.get(*hash).ok_or(EvaluationMessages::UnboundVariable),
+        Node::Variable(_, _, hash) => vars.get(*hash).ok_or(EvaluationError::UnboundVariable),
 
-        Node::Equation(_, _) => Err(EvaluationMessages::IsEquation),
+        Node::Equation(_, _) => Err(EvaluationError::IsEquation),
 
         Node::Neg(a) => Ok(-evaluate(arena, *a, vars)?),
         Node::Add(a, b) => Ok(evaluate(arena, *a, vars)? + evaluate(arena, *b, vars)?),
@@ -121,7 +125,7 @@ pub fn try_simple_assign(arena: &[Node], root: u32, vars: &mut VariableBank) -> 
         Node::Variable(start, end, hash) => (*start, *end, *hash),
         _ => return Ok(None),
     };
-    let value = evaluate(arena, rhs, vars).map_err(|e| e.to_string_msg())?;
+    let value = evaluate(arena, rhs, vars).map_err(|e| e.to_string())?;
     vars.set(var_hash, value)?;
     Ok(Some((var_start, var_end, value)))
 }
@@ -132,7 +136,7 @@ fn eval_angle(
     vars: &VariableBank,
     f_rad: fn(f64) -> f64,
     f_deg: fn(f64) -> f64,
-) -> Result<f64, EvaluationMessages> {
+) -> Result<f64, EvaluationError> {
     match &arena[idx as usize] {
         Node::Deg(inner) => Ok(f_deg(evaluate(arena, *inner, vars)?)),
         Node::Rad(inner) => Ok(f_rad(evaluate(arena, *inner, vars)?)),
@@ -174,11 +178,11 @@ pub enum EvaluationResult {
 /// - `newton` fails to converge for a single free variable.
 /// - More than one variable remains unassigned.
 #[rustfmt::skip]
-pub fn evaluate_pending(arena: &[Node], root: u32, vars: &VariableBank, src: &str) -> Result<EvaluationResult, String> {
+pub fn evaluate_or_solve(arena: &[Node], root: u32, vars: &VariableBank, src: &str) -> Result<EvaluationResult, String> {
     let (lhs_idx, rhs_idx) = match &arena[root as usize] {
         Node::Equation(l, r) => (*l, *r),
         _ => {
-            let v = evaluate(arena, root, vars).map_err(|e| e.to_string_msg())?;
+            let v = evaluate(arena, root, vars).map_err(|e| e.to_string())?;
             return Ok(EvaluationResult::Value(v));
         }
     };
@@ -191,8 +195,8 @@ pub fn evaluate_pending(arena: &[Node], root: u32, vars: &VariableBank, src: &st
 
     match free.len() {
         0 => {
-            let lhs_val = evaluate(arena, lhs_idx, vars).map_err(|e| e.to_string_msg())?;
-            let rhs_val = evaluate(arena, rhs_idx, vars).map_err(|e| e.to_string_msg())?;
+            let lhs_val = evaluate(arena, lhs_idx, vars).map_err(|e| e.to_string())?;
+            let rhs_val = evaluate(arena, rhs_idx, vars).map_err(|e| e.to_string())?;
             Ok(EvaluationResult::Verified {
                 lhs: lhs_val,
                 rhs: rhs_val,
@@ -206,15 +210,15 @@ pub fn evaluate_pending(arena: &[Node], root: u32, vars: &VariableBank, src: &st
             let mut probe = vars.fork_probe(unknown_hash);
             let mut f = |x: f64| -> Result<f64, String> {
                 probe.set_last(x);
-                let l = evaluate(arena, lhs_idx, &probe).map_err(|e| e.to_string_msg())?;
-                let r = evaluate(arena, rhs_idx, &probe).map_err(|e| e.to_string_msg())?;
+                let l = evaluate(arena, lhs_idx, &probe).map_err(|e| e.to_string())?;
+                let r = evaluate(arena, rhs_idx, &probe).map_err(|e| e.to_string())?;
                 Ok(l - r)
             };
 
-            let solution = newton(&mut f, 1.0)
-                .or_else(|_| newton(&mut f, 0.0))
-                .or_else(|_| newton(&mut f, -1.0))
-                .or_else(|_| newton(&mut f, 10.0))
+            let solution = newton_raphson(&mut f, 1.0)
+                .or_else(|_| newton_raphson(&mut f, 0.0))
+                .or_else(|_| newton_raphson(&mut f, -1.0))
+                .or_else(|_| newton_raphson(&mut f, 10.0))
                 .map_err(|_| {
                     format!("Could not solve for '{name}'; try assigning an initial guess manually")
                 })?;
@@ -266,7 +270,7 @@ pub fn evaluate_pending(arena: &[Node], root: u32, vars: &VariableBank, src: &st
 /// - `f` returns an error at any evaluated point.
 /// - The estimated derivative becomes too small (near-zero slope).
 /// - The method fails to converge within `MAX_ITER` iterations.
-fn newton(f: &mut impl FnMut(f64) -> Result<f64, String>, x0: f64) -> Result<f64, String> {
+fn newton_raphson(f: &mut impl FnMut(f64) -> Result<f64, String>, x0: f64) -> Result<f64, String> {
     const MAX_ITER: usize = 64;
     const TOLERANCE: f64 = 1e-10;
     const STEP_SIZE: f64 = 1e-7;
@@ -437,7 +441,7 @@ mod tests {
         let src = "x+2=5";
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
-        let result = evaluate_pending(&arena, root, &vars, src).unwrap();
+        let result = evaluate_or_solve(&arena, root, &vars, src).unwrap();
         if let EvaluationResult::Solved { name, values, .. } = result {
             assert_eq!(name, "x");
             assert!((values[0] - 3.0).abs() < 1e-8);
@@ -455,7 +459,7 @@ mod tests {
         let src = "x^2=9";
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
-        let result = evaluate_pending(&arena, root, &vars, src).unwrap();
+        let result = evaluate_or_solve(&arena, root, &vars, src).unwrap();
         if let EvaluationResult::Solved { values, count, .. } = result {
             assert_eq!(count, 2, "expected two roots for x^2=9");
             for i in 0..count as usize {
@@ -479,7 +483,7 @@ mod tests {
         let src = "x+y=5";
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
-        assert!(evaluate_pending(&arena, root, &vars, src).is_err());
+        assert!(evaluate_or_solve(&arena, root, &vars, src).is_err());
     }
 
     #[test]
