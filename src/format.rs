@@ -114,6 +114,14 @@ pub fn write_node_recursive<W: Write>(out: &mut W, idx: u32, arena: &[Node], src
             write!(out, " ^ ")?;
             write_child(out, b, arena, src, BP_EXP, Side::Right)
         }
+        Node::Deg(a) => {
+            write_node_recursive(out, *a, arena, src)?;
+            write!(out, " Deg")
+        }
+        Node::Rad(a) => {
+            write_node_recursive(out, *a, arena, src)?;
+            write!(out, " Rad")
+        }
 
         Node::Sin(a) => write_unary_recursive(out, "sin", *a, arena, src),
         Node::Cos(a) => write_unary_recursive(out, "cos", *a, arena, src),
@@ -239,6 +247,9 @@ fn write_node_compact<W: Write>(out: &mut W, node: &Node, src: &str) -> std::io:
         Node::Div(a, b) => write!(out, "n{a} / n{b}"),
         Node::Pow(a, b) => write!(out, "n{a} ^ n{b}"),
 
+        Node::Deg(a) => write!(out, "n{a} Deg"),
+        Node::Rad(a) => write!(out, "n{a} Rad"),
+
         Node::Sin(a) => write!(out, "sin(n{a})"),
         Node::Cos(a) => write!(out, "cos(n{a})"),
         Node::Tan(a) => write!(out, "tan(n{a})"),
@@ -298,6 +309,9 @@ fn write_node_verbose<W: Write>(out: &mut W, node: &Node, src: &str) -> std::io:
         Node::Mul(l, r) => write!(out, "Mul(n{l}, n{r})"),
         Node::Div(l, r) => write!(out, "Div(n{l}, n{r})"),
         Node::Pow(l, r) => write!(out, "Pow(n{l}, n{r})"),
+
+        Node::Deg(c) => write!(out, "Deg(n{c})"),
+        Node::Rad(c) => write!(out, "Rad(n{c})"),
 
         Node::Sin(c) => write!(out, "Sin(n{c})"),
         Node::Cos(c) => write!(out, "Cos(n{c})"),

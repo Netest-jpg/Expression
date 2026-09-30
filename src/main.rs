@@ -1,6 +1,7 @@
 use std::io::IsTerminal;
 use std::io::{BufRead, BufWriter, Write};
 
+use ::expression::angles::AngleMode;
 use expression::lexer::{Token, Tokenizer};
 use expression::parser::{Node, Parser};
 use expression::simplification::simplify;
@@ -18,14 +19,16 @@ struct DebugFlags {
     tokens: bool,
     ast: bool,
     verbose: bool,
+    angle: AngleMode,
 }
 
 impl DebugFlags {
     fn new() -> Self {
         DebugFlags {
-            tokens: true,   // on by default
-            ast: false,     // off by default, toggle with 'show ast'
-            verbose: false, // off by default, toggle with 'verbose'
+            tokens: true,                // on by default
+            ast: false,                  // off by default, toggle with 'show ast'
+            verbose: false,              // off by default, toggle with 'verbose'
+            angle: AngleMode::default(), // Degrees
         }
     }
 }
@@ -80,6 +83,7 @@ fn main() {
               [ use 'simplify' to simplify the pending equation ]\n\
               [ use 'clear' to reset all variable bindings ]\n\
               [ use 'show tokens' / 'show ast' / 'verbose' to toggle debug output ]\n\
+              [ use 'angle' to toggle default angle unit (degrees/radians) ]\n\
               \n",
         )
         .ok();
@@ -131,6 +135,27 @@ fn main() {
             pending = None;
             if is_terminal {
                 writeln!(out, "  (all variables and pending equation cleared)").ok();
+                writeln!(out).ok();
+                out.flush().ok();
+            }
+            continue;
+        }
+
+        if expression == "angle" {
+            flags.angle = match flags.angle {
+                AngleMode::Degrees => AngleMode::Radians,
+                AngleMode::Radians => AngleMode::Degrees,
+            };
+            if is_terminal {
+                writeln!(
+                    out,
+                    "  (Default angle unit: {})",
+                    match flags.angle {
+                        AngleMode::Degrees => "degrees",
+                        AngleMode::Radians => "radians",
+                    }
+                )
+                .ok();
                 writeln!(out).ok();
                 out.flush().ok();
             }
@@ -278,7 +303,10 @@ fn main() {
         arena.clear();
         arena.reserve(tokens.len());
 
-        let root = match Parser::new(&tokens, expression, &mut arena).parse() {
+        let root = match Parser::new(&tokens, expression, &mut arena)
+            .with_angle_mode(flags.angle)
+            .parse()
+        {
             Err(e) => {
                 eprintln!("Error: {e}");
                 writeln!(out).ok();

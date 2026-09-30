@@ -1,4 +1,4 @@
-const FNV_OFFSET_BASIS: u64 = 14695981039346656037;
+const FNV_OFFSET: u64 = 14695981039346656037;
 const FNV_PRIME: u64 = 1099511628211;
 
 /// Computes hash for a byte slice using the FNV-1a algorithm at compile time.
@@ -7,11 +7,11 @@ const FNV_PRIME: u64 = 1099511628211;
 ///
 /// `hash = (hash ^ byte).wrapping_mul(FNV_PRIME)`
 ///
-/// `FNV_OFFSET_BASIS` is used as the initial hash value.
+/// `FNV_OFFSET` is used as the initial hash value.
 /// # Returns
 /// The hash of the bytes.
 const fn keyword_hash(bytes: &[u8]) -> u64 {
-    let mut hash = FNV_OFFSET_BASIS;
+    let mut hash = FNV_OFFSET;
     let mut i = 0;
     while i < bytes.len() {
         hash = (hash ^ bytes[i] as u64).wrapping_mul(FNV_PRIME);
@@ -23,6 +23,9 @@ const fn keyword_hash(bytes: &[u8]) -> u64 {
 // common keyword hashes stored as constants instead of static because the hashs are in u64.
 pub const KW_LN: u64 = keyword_hash(b"ln");
 pub const KW_LOG: u64 = keyword_hash(b"log");
+
+pub const KW_DEG: u64 = keyword_hash(b"Deg");
+pub const KW_RAD: u64 = keyword_hash(b"Rad");
 
 pub const KW_SIN: u64 = keyword_hash(b"sin");
 pub const KW_COS: u64 = keyword_hash(b"cos");
@@ -60,18 +63,18 @@ pub const KW_ACOTH: u64 = keyword_hash(b"acoth");
 pub const KW_ACSCH: u64 = keyword_hash(b"acsch");
 pub const KW_ASECH: u64 = keyword_hash(b"asech");
 
-static IS_IDENT: [u8; 32] = build_ident_table();
-static DISPATCH: [Dispatch; 256] = build_dispatch_table();
+static VARIABLE: [u8; 32] = build_variable_table();
+static BYTE_CLASS: [ByteClass; 256] = build_byte_class_table();
 
 /// Builds a bitset of 32 bytes **at compile-time**, where each byte represents 8 characters.
 ///
-/// Each bit in the byte is set to **1** if the corresponding character is an Variable character.
+/// Each bit in the byte is set to **1** if the corresponding character is a valid Variable character.
 /// # Allowed characters:
 /// - `0` .. `9`
 /// - `A` .. `Z`
 /// - `a` .. `z`
 /// - `_`
-const fn build_ident_table() -> [u8; 32] {
+const fn build_variable_table() -> [u8; 32] {
     let mut t = [0; 32];
 
     let mut c = b'0';
@@ -97,16 +100,9 @@ const fn build_ident_table() -> [u8; 32] {
     t
 }
 
-/// Takes in a u8 and returns a boolean indicating whether it is a valid Variable character.
-#[inline(always)]
-fn is_ident_char(c: u8) -> bool {
-    unsafe { (*IS_IDENT.get_unchecked(c as usize / 8) >> (c % 8)) & 1 != 0 }
-}
-
-/// Value types for the `DISPATCH` lookup table.
-#[repr(u8)] // stores the enum's discriminant as an 8-bit unsigned integer
+#[repr(u8)]
 #[derive(Clone, Copy)]
-enum Dispatch {
+enum ByteClass {
     Whitespace,
     Number,
     Variable,
@@ -115,14 +111,14 @@ enum Dispatch {
     Multiply,
     Divide,
     Exponent,
-    LParen,
-    RParen,
+    LeftParenthesis,
+    RightParenthesis,
     Equals,
     Unknown,
 }
 
-/// Builds the `DISPATCH` lookup table at compile time.
-/// Maps every possible byte (0-255) to a `Dispatch` enum variant.
+/// Builds a `ByteClass` lookup table at compile time.
+/// Maps every possible byte (0-255) to a `ByteClass` enum variant.
 ///
 /// - Whitespace: ` `, `\t`, `\n`, `\r`
 /// - Digits: `0-9`, `.`
@@ -131,37 +127,37 @@ enum Dispatch {
 /// - Parentheses: `(` , `)`
 /// - Equals: `=`
 /// - Unknown: all other bytes
-const fn build_dispatch_table() -> [Dispatch; 256] {
-    let mut t = [Dispatch::Unknown; 256];
-    t[b' ' as usize] = Dispatch::Whitespace;
-    t[b'\t' as usize] = Dispatch::Whitespace;
-    t[b'\n' as usize] = Dispatch::Whitespace;
-    t[b'\r' as usize] = Dispatch::Whitespace;
+const fn build_byte_class_table() -> [ByteClass; 256] {
+    let mut t = [ByteClass::Unknown; 256];
+    t[b' ' as usize] = ByteClass::Whitespace;
+    t[b'\t' as usize] = ByteClass::Whitespace;
+    t[b'\n' as usize] = ByteClass::Whitespace;
+    t[b'\r' as usize] = ByteClass::Whitespace;
     let mut c = b'0';
     while c <= b'9' {
-        t[c as usize] = Dispatch::Number;
+        t[c as usize] = ByteClass::Number;
         c += 1;
     }
-    t[b'.' as usize] = Dispatch::Number;
+    t[b'.' as usize] = ByteClass::Number;
     let mut c = b'a';
     while c <= b'z' {
-        t[c as usize] = Dispatch::Variable;
+        t[c as usize] = ByteClass::Variable;
         c += 1;
     }
     let mut c = b'A';
     while c <= b'Z' {
-        t[c as usize] = Dispatch::Variable;
+        t[c as usize] = ByteClass::Variable;
         c += 1;
     }
-    t[b'_' as usize] = Dispatch::Variable;
-    t[b'+' as usize] = Dispatch::Plus;
-    t[b'-' as usize] = Dispatch::Minus;
-    t[b'*' as usize] = Dispatch::Multiply;
-    t[b'/' as usize] = Dispatch::Divide;
-    t[b'^' as usize] = Dispatch::Exponent;
-    t[b'(' as usize] = Dispatch::LParen;
-    t[b')' as usize] = Dispatch::RParen;
-    t[b'=' as usize] = Dispatch::Equals;
+    t[b'_' as usize] = ByteClass::Variable;
+    t[b'+' as usize] = ByteClass::Plus;
+    t[b'-' as usize] = ByteClass::Minus;
+    t[b'*' as usize] = ByteClass::Multiply;
+    t[b'/' as usize] = ByteClass::Divide;
+    t[b'^' as usize] = ByteClass::Exponent;
+    t[b'(' as usize] = ByteClass::LeftParenthesis;
+    t[b')' as usize] = ByteClass::RightParenthesis;
+    t[b'=' as usize] = ByteClass::Equals;
     t
 }
 
@@ -172,7 +168,7 @@ pub enum Token {
         start: u32,
         end: u32,
     },
-    /// Byte range in the source. Call `.name(src)` when needed.
+    /// Byte range in the source. Call `.source_text(src)` when needed.
     Variable {
         start: u32,
         end: u32,
@@ -193,6 +189,7 @@ pub const BP_EQUALS: u8 = 5;
 pub const BP_ADD: u8 = 10;
 pub const BP_MUL: u8 = 20;
 pub const BP_EXP: u8 = 30;
+pub const BP_UNARY: u8 = 25;
 
 impl Token {
     /// Returns the Left Binding Power (LBP) of a [`Token`]
@@ -254,10 +251,9 @@ impl Token {
         }
     }
 
-    /// Returns the raw source text for the corresponding Variable token.
+    /// Returns the raw source text for a `Token::Variable`.
     ///
-    /// # Panics
-    /// Panics if called on any `Token` variants other than `Token::Variable`.
+    /// Returns `None` if called on any other token variant.
     ///
     /// # Safety
     /// Uses `slice_unchecked` internally which skips the UTF-8 boundary and bounds check. It is sound here because `start` & `end` are byte offsets produced by tokenizer from this exact `src`, so they will always be within bounds.
@@ -269,22 +265,15 @@ impl Token {
     /// use expression::lexer::Token;
     /// let src = "2x+3";
     /// let token = Token::Variable { start: 1, end: 2, hash: 0 };
-    /// assert_eq!(token.name(src), "x");
-    /// ```
-    ///
-    /// ```should_panic
-    /// use expression::lexer::Token;
-    /// let src = "2x+3";
-    /// let token = Token::Plus;
-    /// token.name(src); // panics
+    /// assert_eq!(token.source_text(src), Some("x"));
     /// ```
     #[inline(always)]
-    pub fn name<'src>(&self, src: &'src str) -> &'src str {
+    pub fn source_text<'src>(&self, src: &'src str) -> Option<&'src str> {
         match self {
-            Token::Variable { start, end, .. } => unsafe {
-                Self::slice_unchecked(src, *start, *end)
-            },
-            _ => panic!("Token::name called on non-Variable token"),
+            Token::Variable { start, end, .. } => {
+                Some(unsafe { Self::slice_unchecked(src, *start, *end) })
+            }
+            _ => None,
         }
     }
 
@@ -302,32 +291,6 @@ impl Token {
     #[inline(always)]
     pub fn as_f64(&self, src: &str) -> f64 {
         fast_float2::parse::<f64, &str>(self.raw(src)).expect("Invalid number")
-    }
-
-    /// Returns the raw source text for a `Token::Variable`.
-    ///
-    /// Returns `None` if called on any other token variant.
-    ///
-    /// # Safety
-    /// Uses `slice_unchecked` internally which skips the UTF-8 boundary and bounds check. It is sound here because `start` & `end` are byte offsets produced by tokenizer from this exact `src`, so they will always be within bounds.
-    ///
-    /// Callers must pass the same `src` the token was tokenized from. Any other string, even if it's identical content will result in undefined behaviour.
-    ///
-    /// # Example:
-    /// ```rust
-    /// use expression::lexer::Token;
-    /// let src = "2x+3";
-    /// let token = Token::Variable { start: 1, end: 2, hash: 0 };
-    /// assert_eq!(token.as_ident(src), Some("x"));
-    /// ```
-    #[inline(always)]
-    pub fn as_ident<'src>(&self, src: &'src str) -> Option<&'src str> {
-        match self {
-            Token::Variable { start, end, .. } => {
-                Some(unsafe { Self::slice_unchecked(src, *start, *end) })
-            }
-            _ => None,
-        }
     }
 
     /// Returns the byte slice `src[start..end]` without UTF-8 or bounds checks.
@@ -350,14 +313,14 @@ impl std::fmt::Debug for Token {
         match self {
             Token::Number { start, end } => write!(f, "Number([{start}..{end}])"),
             Token::Variable { start, end, .. } => write!(f, "Variable([{start}..{end}])"),
-            Token::Plus => write!(f, "Plus"),
-            Token::Minus => write!(f, "Minus"),
-            Token::Multiply => write!(f, "Multiply"),
-            Token::Divide => write!(f, "Divide"),
-            Token::Exponent => write!(f, "Exponent"),
-            Token::LeftParenthesis => write!(f, "LeftParenthesis"),
-            Token::RightParenthesis => write!(f, "RightParenthesis"),
-            Token::Equals => write!(f, "Equals"),
+            Token::Plus => write!(f, "+"),
+            Token::Minus => write!(f, "-"),
+            Token::Multiply => write!(f, "*"),
+            Token::Divide => write!(f, "/"),
+            Token::Exponent => write!(f, "^"),
+            Token::LeftParenthesis => write!(f, "("),
+            Token::RightParenthesis => write!(f, ")"),
+            Token::Equals => write!(f, "="),
             Token::EndOfFile => write!(f, "EndOfFile"),
         }
     }
@@ -425,66 +388,68 @@ impl<'src> Tokenizer<'src> {
                 Some(b) => b,
             };
 
-            match unsafe { *DISPATCH.get_unchecked(byte as usize) } {
-                Dispatch::Whitespace => {
+            match unsafe { *BYTE_CLASS.get_unchecked(byte as usize) } {
+                ByteClass::Whitespace => {
                     self.advance();
                 }
 
-                Dispatch::Number => {
+                ByteClass::Number => {
                     let token = self.read_number()?;
                     // implicit multiply: "2x" → Number Asterisk Variable
-                    let implicit = self.current().is_some_and(is_ident_char);
+                    // doesn't perform for "Deg" and "Rad"
+                    let implicit = self.current().is_some_and(is_variable)
+                        && !matches!(self.peek_variable_(), KW_DEG | KW_RAD);
                     tokens.push(token);
                     if implicit {
                         tokens.push(Token::Multiply);
                     }
                 }
 
-                Dispatch::Variable => {
-                    tokens.push(self.read_identifier());
+                ByteClass::Variable => {
+                    tokens.push(self.read_variable());
                 }
 
-                Dispatch::Plus => {
+                ByteClass::Plus => {
                     self.advance();
                     tokens.push(Token::Plus);
                 }
 
-                Dispatch::Minus => {
+                ByteClass::Minus => {
                     self.advance();
                     tokens.push(Token::Minus);
                 }
 
-                Dispatch::Multiply => {
+                ByteClass::Multiply => {
                     self.advance();
                     tokens.push(Token::Multiply);
                 }
 
-                Dispatch::Divide => {
+                ByteClass::Divide => {
                     self.advance();
                     tokens.push(Token::Divide);
                 }
 
-                Dispatch::Exponent => {
+                ByteClass::Exponent => {
                     self.advance();
                     tokens.push(Token::Exponent);
                 }
 
-                Dispatch::LParen => {
+                ByteClass::LeftParenthesis => {
                     self.advance();
                     tokens.push(Token::LeftParenthesis);
                 }
 
-                Dispatch::RParen => {
+                ByteClass::RightParenthesis => {
                     self.advance();
                     tokens.push(Token::RightParenthesis);
                 }
 
-                Dispatch::Equals => {
+                ByteClass::Equals => {
                     self.advance();
                     tokens.push(Token::Equals);
                 }
 
-                Dispatch::Unknown => {
+                ByteClass::Unknown => {
                     let character = self.text[self.pos..].chars().next().unwrap();
                     return Err(unknown_character_error(character));
                 }
@@ -505,6 +470,21 @@ impl<'src> Tokenizer<'src> {
     #[inline(always)]
     fn advance(&mut self) {
         self.pos += 1;
+    }
+
+    /// Hashes the identifier starting at `self.pos` without consuming it.
+    #[inline(always)]
+    fn peek_variable_(&self) -> u64 {
+        let mut hash = FNV_OFFSET;
+        let mut i = self.pos;
+        while let Some(&byte) = self.src.get(i) {
+            if !is_variable(byte) {
+                break;
+            }
+            hash = fnv1a_update(hash, byte);
+            i += 1;
+        }
+        hash
     }
 
     /// Reads a numeric literal from the current position, consuming digits and at most one decimal point in any order.
@@ -546,20 +526,20 @@ impl<'src> Tokenizer<'src> {
         })
     }
 
-    /// Reads an Variable from the current position, consuming bytes
-    /// for which `is_ident_char` returns true.
+    /// Reads variable from the current position, consuming bytes
+    /// for which `is_variable()` returns true.
     ///
     /// Stops at the first byte that is not a valid Variable character.
     ///
     /// Returns `Token::Variable` spanning the consumed range, along with
     /// an FNV-1a hash of the Variable's bytes
     #[inline(always)]
-    fn read_identifier(&mut self) -> Token {
+    fn read_variable(&mut self) -> Token {
         let start = self.pos as u32;
-        let mut hash = FNV_OFFSET_BASIS;
+        let mut hash = FNV_OFFSET;
 
         while let Some(byte) = self.current() {
-            if is_ident_char(byte) {
+            if is_variable(byte) {
                 hash = fnv1a_update(hash, byte);
                 self.advance();
             } else {
@@ -586,6 +566,12 @@ impl<'src> Tokenizer<'src> {
 #[inline(always)]
 fn fnv1a_update(hash: u64, byte: u8) -> u64 {
     (hash ^ byte as u64).wrapping_mul(FNV_PRIME)
+}
+
+/// Takes in a u8 and returns a boolean indicating whether it is a valid Variable character.
+#[inline(always)]
+fn is_variable(c: u8) -> bool {
+    unsafe { (*VARIABLE.get_unchecked(c as usize / 8) >> (c % 8)) & 1 != 0 }
 }
 
 // Error handles
@@ -650,23 +636,15 @@ mod tests {
     }
 
     #[test]
-    fn test_fn_name() {
+    fn test_fn_source_text() {
         let src = "2x+3";
-        let token = Token::Variable {
+        let var = Token::Variable {
             start: 1,
             end: 2,
-            hash: 111111, //picked randomly - shouldn't make a difference
+            hash: 0,
         };
-        assert_eq!(token.name(src), "x");
-    }
-
-    #[test]
-    #[should_panic(expected = "Token::name called on non-Variable token")]
-    fn test_fn_name_panics_on_non_identifier() {
-        let src = "2x+3";
-        let token = Token::Plus;
-
-        token.name(src);
+        assert_eq!(var.source_text(src), Some("x"));
+        assert_eq!(Token::Plus.source_text(src), None);
     }
 
     #[test]
@@ -707,10 +685,22 @@ mod tests {
     }
 
     #[test]
-    fn tests_fn_read_identifier() {
+    fn test_unit_keyword_suppresses_implicit_multiply() {
+        let (tokens, _) = tok("30Deg");
+        // Number, Variable(Deg), EndOfFile — no Multiply
+        assert_eq!(tokens.len(), 3);
+        assert!(matches!(tokens[1], Token::Variable { hash, .. } if hash == KW_DEG));
+
+        let (tokens, _) = tok("2Degrees");
+        // still Number, Multiply, Variable, EndOfFile
+        assert!(matches!(tokens[1], Token::Multiply));
+    }
+
+    #[test]
+    fn tests_fn_read_variable() {
         let src = "2hello";
         let mut expression = Tokenizer::new(src);
-        let result = expression.read_identifier();
+        let result = expression.read_variable();
         assert!(matches!(result, Token::Variable { .. }));
     }
 
@@ -736,7 +726,7 @@ mod tests {
     }
 
     #[test]
-    fn test_identifier_hash_stability() {
+    fn test_variable_hash_stability() {
         let (t1, _) = tok("foo");
         let (t2, _) = tok("foo");
         match (&t1[0], &t2[0]) {

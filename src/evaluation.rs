@@ -35,15 +35,33 @@ pub fn evaluate(arena: &[Node], idx: u32, vars: &VariableBank) -> Result<f64, Ev
         Node::Div(a, b) => Ok(evaluate(arena, *a, vars)? / evaluate(arena, *b, vars)?),
         Node::Pow(a, b) => Ok(evaluate(arena, *a, vars)?.powf(evaluate(arena, *b, vars)?)),
 
-        Node::Sin(a) => Ok(evaluate(arena, *a, vars)?.sin()),
-        Node::Cos(a) => Ok(evaluate(arena, *a, vars)?.cos()),
-        Node::Tan(a) => Ok(evaluate(arena, *a, vars)?.tan()),
-        Node::Sec(a) => Ok(1.0 / evaluate(arena, *a, vars)?.cos()),
-        Node::Csc(a) => Ok(1.0 / evaluate(arena, *a, vars)?.sin()),
-        Node::Cot(a) => {
-            let v = evaluate(arena, *a, vars)?;
-            Ok(v.cos() / v.sin())
-        }
+        Node::Deg(a) => Ok(evaluate(arena, *a, vars)?.to_radians()),
+        Node::Rad(a) => Ok(evaluate(arena, *a, vars)?),
+
+        Node::Sin(a) => eval_angle(arena, *a, vars, f64::sin, crate::angles::sin_deg),
+        Node::Cos(a) => eval_angle(arena, *a, vars, f64::cos, crate::angles::cos_deg),
+        Node::Tan(a) => eval_angle(arena, *a, vars, f64::tan, crate::angles::tan_deg),
+        Node::Sec(a) => eval_angle(
+            arena,
+            *a,
+            vars,
+            |v| 1.0 / v.cos(),
+            |v| 1.0 / crate::angles::cos_deg(v),
+        ),
+        Node::Csc(a) => eval_angle(
+            arena,
+            *a,
+            vars,
+            |v| 1.0 / v.sin(),
+            |v| 1.0 / crate::angles::sin_deg(v),
+        ),
+        Node::Cot(a) => eval_angle(
+            arena,
+            *a,
+            vars,
+            |v| v.cos() / v.sin(),
+            |v| crate::angles::cos_deg(v) / crate::angles::sin_deg(v),
+        ),
 
         Node::Asin(a) => Ok(evaluate(arena, *a, vars)?.asin()),
         Node::Acos(a) => Ok(evaluate(arena, *a, vars)?.acos()),
@@ -106,6 +124,20 @@ pub fn try_simple_assign(arena: &[Node], root: u32, vars: &mut VariableBank) -> 
     let value = evaluate(arena, rhs, vars).map_err(|e| e.to_string_msg())?;
     vars.set(var_hash, value)?;
     Ok(Some((var_start, var_end, value)))
+}
+
+fn eval_angle(
+    arena: &[Node],
+    idx: u32,
+    vars: &VariableBank,
+    f_rad: fn(f64) -> f64,
+    f_deg: fn(f64) -> f64,
+) -> Result<f64, EvaluationMessages> {
+    match &arena[idx as usize] {
+        Node::Deg(inner) => Ok(f_deg(evaluate(arena, *inner, vars)?)),
+        Node::Rad(inner) => Ok(f_rad(evaluate(arena, *inner, vars)?)),
+        _ => Ok(f_rad(evaluate(arena, idx, vars)?)),
+    }
 }
 
 pub enum EvaluationResult {
@@ -461,5 +493,13 @@ mod tests {
         assert!(vars.set(VARIABLE_LIMIT as u64 + 1, 1.0).is_err());
         // Updating an existing key is always ok.
         vars.set(1u64, 99.0).unwrap();
+    }
+
+    #[test]
+    fn test_trig_defaults_to_degrees() {
+        assert_eq!(parse_and_eval("sin(30)"), 0.5);
+        assert_eq!(parse_and_eval("cos(90)"), 0.0);
+        assert!((parse_and_eval("sin(pi Rad)")).abs() < 1e-12);
+        assert_eq!(parse_and_eval("sin(90 Deg)"), 1.0);
     }
 }

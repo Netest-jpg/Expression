@@ -1,8 +1,10 @@
 #![allow(dead_code)]
+use crate::angles::AngleMode;
 use crate::lexer::{
-    KW_ACOS, KW_ACOSH, KW_ACOT, KW_ACOTH, KW_ACSC, KW_ACSCH, KW_ASEC, KW_ASECH, KW_ASIN, KW_ASINH,
-    KW_ATAN, KW_ATANH, KW_COS, KW_COSH, KW_COT, KW_COTH, KW_CSC, KW_CSCH, KW_E, KW_LN, KW_LOG,
-    KW_PI, KW_SEC, KW_SECH, KW_SIN, KW_SINH, KW_SQRT, KW_TAN, KW_TANH, Token, Tokenizer,
+    BP_UNARY, KW_ACOS, KW_ACOSH, KW_ACOT, KW_ACOTH, KW_ACSC, KW_ACSCH, KW_ASEC, KW_ASECH, KW_ASIN,
+    KW_ASINH, KW_ATAN, KW_ATANH, KW_COS, KW_COSH, KW_COT, KW_COTH, KW_CSC, KW_CSCH, KW_DEG, KW_E,
+    KW_LN, KW_LOG, KW_PI, KW_RAD, KW_SEC, KW_SECH, KW_SIN, KW_SINH, KW_SQRT, KW_TAN, KW_TANH,
+    Token, Tokenizer,
 };
 use fast_float2 as fast_float;
 
@@ -19,6 +21,9 @@ pub enum Node {
     Mul(u32, u32),
     Div(u32, u32),
     Pow(u32, u32),
+
+    Deg(u32),
+    Rad(u32),
 
     Sin(u32),
     Cos(u32),
@@ -60,50 +65,12 @@ pub enum Node {
     Equation(u32, u32),
 }
 
-/// Resolves a function hash to its corresponding `Node`.
-///
-/// The supplied `arg` is stored in the resulting `Node`.
-///
-/// Returns `None` if the supplied `hash` doesn't match any of the supported functions' hash.
-#[inline(always)]
-fn known_function_kind(hash: u64, arg: u32) -> Option<Node> {
-    Some(match hash {
-        KW_SIN => Node::Sin(arg),
-        KW_COS => Node::Cos(arg),
-        KW_TAN => Node::Tan(arg),
-        KW_LN => Node::Ln(arg),
-        KW_LOG => Node::Log(arg),
-        KW_SQRT => Node::Sqrt(arg),
-        KW_SEC => Node::Sec(arg),
-        KW_CSC => Node::Csc(arg),
-        KW_COT => Node::Cot(arg),
-        KW_ASIN => Node::Asin(arg),
-        KW_ACOS => Node::Acos(arg),
-        KW_ATAN => Node::Atan(arg),
-        KW_ACSC => Node::Acsc(arg),
-        KW_ASEC => Node::Asec(arg),
-        KW_ACOT => Node::Acot(arg),
-        KW_SINH => Node::Sinh(arg),
-        KW_COSH => Node::Cosh(arg),
-        KW_TANH => Node::Tanh(arg),
-        KW_SECH => Node::Sech(arg),
-        KW_CSCH => Node::Csch(arg),
-        KW_COTH => Node::Coth(arg),
-        KW_ASINH => Node::Asinh(arg),
-        KW_ACOSH => Node::Acosh(arg),
-        KW_ATANH => Node::Atanh(arg),
-        KW_ASECH => Node::Asech(arg),
-        KW_ACSCH => Node::Acsch(arg),
-        KW_ACOTH => Node::Acoth(arg),
-        _ => return None,
-    })
-}
-
 pub struct Parser<'src, 'arena> {
     tokens: &'src [Token],
     src: &'src str,
     position: usize,
     arena: &'arena mut Vec<Node>,
+    angle_mode: AngleMode,
 }
 
 impl<'src, 'arena> Parser<'src, 'arena> {
@@ -115,7 +82,13 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             src,
             position: 0,
             arena,
+            angle_mode: AngleMode::default(),
         }
+    }
+
+    pub fn with_angle_mode(mut self, mode: AngleMode) -> Self {
+        self.angle_mode = mode;
+        self
     }
 
     /// Parses the full token stream into a single expression, consuming the parser.
@@ -142,28 +115,10 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     pub fn parse(mut self) -> Result<u32, String> {
         let root = self.pratt_parse(0)?;
         if !matches!(self.peek(), Token::EndOfFile) {
-            return self.unexpected_trailing_token();
+            return Err(unexpected_trailing_error(self.peek(), self.src));
         }
         Ok(root)
     }
-    #[cold]
-    fn unexpected_trailing_token(&self) -> Result<u32, String> {
-        Err(format!("Unexpected trailing token: {:?}", self.peek()))
-        // Err(format!(
-        //     "Unexpected trailing token: {:?}",
-        //     self.token_text(self.peek())
-        // ))
-    }
-
-    // #[inline(always)]
-    // fn token_text(&self, token: &Token) -> &str {
-    //     match token {
-    //         Token::Number { start, end } | Token::Variable { start, end, .. } => unsafe {
-    //             self.src.get_unchecked(*start as usize..*end as usize)
-    //         },
-    //         _ => "",
-    //     }
-    // }
 
     /// Parses an expression, consuming infix operators while their `lbp`
     /// exceeds `rbp`.
@@ -220,52 +175,60 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 let raw = &self.src[start as usize..end as usize];
                 let value = fast_float::parse::<f64, &str>(raw)
                     .map_err(|e| invalid_number_error(raw, &e))?;
-                Ok(self.push(Node::Number(value)))
+                Ok(self.push_node(Node::Number(value)))
             }
 
             Token::Variable { start, end, hash } => {
                 if hash == KW_PI {
-                    return Ok(self.push(Node::Constant(std::f64::consts::PI)));
+                    return Ok(self.push_node(Node::Constant(std::f64::consts::PI)));
                 }
                 if hash == KW_E {
-                    return Ok(self.push(Node::Constant(std::f64::consts::E)));
+                    return Ok(self.push_node(Node::Constant(std::f64::consts::E)));
                 }
-
+                if hash == KW_DEG || hash == KW_RAD {
+                    return Err(
+                        "Deg/Rad is only valid at the end of a trig function's argument"
+                            .to_string(),
+                    );
+                }
                 if matches!(self.peek(), Token::LeftParenthesis) {
                     if self.src[start as usize..end as usize].starts_with("log_") {
                         let base = self.parse_log_base(start, end)?;
-                        self.skip(); // eat '('
+                        self.advance(); // eat '('
                         let arg = self.pratt_parse(0)?;
-                        self.expect_rparen()?;
-                        return Ok(self.push(Node::LogBase(base, arg)));
+                        self.expect_right_parenthesis()?;
+                        return Ok(self.push_node(Node::LogBase(base, arg)));
                     }
 
-                    self.skip(); // eat '('
-                    let arg = self.pratt_parse(0)?;
-                    self.expect_rparen()?;
-                    if let Some(kind) = known_function_kind(hash, arg) {
-                        return Ok(self.push(kind));
+                    self.advance(); // eat '('
+                    let mut arg = self.pratt_parse(0)?;
+                    if is_forward_trig(hash) {
+                        arg = self.wrap_angle(arg);
+                    }
+                    self.expect_right_parenthesis()?;
+                    if let Some(kind) = function_node(hash, arg) {
+                        return Ok(self.push_node(kind));
                     }
 
-                    let var = self.push(Node::Variable(start, end, hash));
-                    return Ok(self.push(Node::Mul(var, arg)));
+                    let var = self.push_node(Node::Variable(start, end, hash));
+                    return Ok(self.push_node(Node::Mul(var, arg)));
                 }
 
-                Ok(self.push(Node::Variable(start, end, hash)))
+                Ok(self.push_node(Node::Variable(start, end, hash)))
             }
 
             Token::Minus => {
-                let inner = self.pratt_parse(25)?;
-                Ok(self.push(Node::Neg(inner)))
+                let inner = self.pratt_parse(BP_UNARY)?;
+                Ok(self.push_node(Node::Neg(inner)))
             }
 
             Token::LeftParenthesis => {
                 let inner = self.pratt_parse(0)?;
-                self.expect_rparen()?;
+                self.expect_right_parenthesis()?;
                 Ok(inner)
             }
 
-            other => unexpected_token_in_expression(&other),
+            other => Err(unexpected_prefix_error(&other)),
         }
     }
 
@@ -309,14 +272,16 @@ impl<'src, 'arena> Parser<'src, 'arena> {
             .map_err(|e| invalid_log_base_error(&e))?;
         offset_tokens(&mut tokens, base_start);
 
-        Parser::new(&tokens, self.src, self.arena).parse()
+        Parser::new(&tokens, self.src, self.arena)
+            .with_angle_mode(self.angle_mode)
+            .parse()
     }
 
     /// Stores a `Node` in the parser's `arena` and returns the index of the newly appended `Node`.
     ///
     /// Arena indices are `u32`; parsing an expression that produces more than `u32::MAX` nodes will silently wrap.
     #[inline(always)]
-    fn push(&mut self, node: Node) -> u32 {
+    fn push_node(&mut self, node: Node) -> u32 {
         let index = self.arena.len() as u32;
         self.arena.push(node);
         index
@@ -327,11 +292,11 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     /// # Errors
     /// Returns `Err` if the current token is not `Token::RightParenthesis`.
     #[inline(always)]
-    fn expect_rparen(&mut self) -> Result<(), String> {
+    fn expect_right_parenthesis(&mut self) -> Result<(), String> {
         if !matches!(self.peek(), Token::RightParenthesis) {
-            return Err(expected_rparen_error(self.peek()));
+            return Err(expected_right_parenthesis_error(self.peek()));
         }
-        self.skip();
+        self.advance();
         Ok(())
     }
 
@@ -347,7 +312,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
 
     /// Skips to the next position.
     #[inline(always)]
-    fn skip(&mut self) {
+    fn advance(&mut self) {
         self.position += 1;
     }
 
@@ -372,35 +337,55 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         match token {
             Token::Equals => {
                 let right = self.pratt_parse(token.rbp())?; // rbp=4 → right-associative
-                Ok(self.push(Node::Equation(left, right)))
+                Ok(self.push_node(Node::Equation(left, right)))
             }
             Token::Plus => {
                 let right = self.pratt_parse(token.rbp())?;
-                Ok(self.push(Node::Add(left, right)))
+                Ok(self.push_node(Node::Add(left, right)))
             }
             Token::Minus => {
                 let right = self.pratt_parse(token.rbp())?;
-                Ok(self.push(Node::Sub(left, right)))
+                Ok(self.push_node(Node::Sub(left, right)))
             }
             Token::Multiply => {
                 let right = self.pratt_parse(token.rbp())?;
-                Ok(self.push(Node::Mul(left, right)))
+                Ok(self.push_node(Node::Mul(left, right)))
             }
             Token::Divide => {
                 let right = self.pratt_parse(token.rbp())?;
-                Ok(self.push(Node::Div(left, right)))
+                Ok(self.push_node(Node::Div(left, right)))
             }
             Token::Exponent => {
                 let right = self.pratt_parse(token.rbp())?;
-                Ok(self.push(Node::Pow(left, right)))
+                Ok(self.push_node(Node::Pow(left, right)))
             }
             Token::LeftParenthesis => {
                 let right = self.pratt_parse(token.rbp())?;
-                self.expect_rparen()?;
-                Ok(self.push(Node::Mul(left, right)))
+                self.expect_right_parenthesis()?;
+                Ok(self.push_node(Node::Mul(left, right)))
             }
-            other => unexpected_infix_token(&other),
+            other => Err(unexpected_infix_error(&other)),
         }
+    }
+    /// Called after a forward-trig argument is parsed. Consumes a trailing `Deg`/`Rad`
+    /// if present, otherwise falls back to the parser's default mode.
+    fn wrap_angle(&mut self, arg: u32) -> u32 {
+        let unit = match self.peek() {
+            Token::Variable { hash, .. } if *hash == KW_DEG => Some(AngleMode::Degrees),
+            Token::Variable { hash, .. } if *hash == KW_RAD => Some(AngleMode::Radians),
+            _ => None,
+        };
+        let mode = match unit {
+            Some(m) => {
+                self.advance();
+                m
+            }
+            None => self.angle_mode,
+        };
+        self.push_node(match mode {
+            AngleMode::Degrees => Node::Deg(arg),
+            AngleMode::Radians => Node::Rad(arg),
+        })
     }
 }
 
@@ -426,6 +411,50 @@ fn offset_tokens(tokens: &mut [Token], offset: u32) {
     }
 }
 
+/// Resolves a function hash to its corresponding `Node`.
+///
+/// The supplied `arg` is stored in the resulting `Node`.
+///
+/// Returns `None` if the supplied `hash` doesn't match any of the supported functions' hash.
+#[inline(always)]
+fn function_node(hash: u64, arg: u32) -> Option<Node> {
+    Some(match hash {
+        KW_SIN => Node::Sin(arg),
+        KW_COS => Node::Cos(arg),
+        KW_TAN => Node::Tan(arg),
+        KW_LN => Node::Ln(arg),
+        KW_LOG => Node::Log(arg),
+        KW_SQRT => Node::Sqrt(arg),
+        KW_SEC => Node::Sec(arg),
+        KW_CSC => Node::Csc(arg),
+        KW_COT => Node::Cot(arg),
+        KW_ASIN => Node::Asin(arg),
+        KW_ACOS => Node::Acos(arg),
+        KW_ATAN => Node::Atan(arg),
+        KW_ACSC => Node::Acsc(arg),
+        KW_ASEC => Node::Asec(arg),
+        KW_ACOT => Node::Acot(arg),
+        KW_SINH => Node::Sinh(arg),
+        KW_COSH => Node::Cosh(arg),
+        KW_TANH => Node::Tanh(arg),
+        KW_SECH => Node::Sech(arg),
+        KW_CSCH => Node::Csch(arg),
+        KW_COTH => Node::Coth(arg),
+        KW_ASINH => Node::Asinh(arg),
+        KW_ACOSH => Node::Acosh(arg),
+        KW_ATANH => Node::Atanh(arg),
+        KW_ASECH => Node::Asech(arg),
+        KW_ACSCH => Node::Acsch(arg),
+        KW_ACOTH => Node::Acoth(arg),
+        _ => return None,
+    })
+}
+
+#[inline(always)]
+fn is_forward_trig(hash: u64) -> bool {
+    matches!(hash, KW_SIN | KW_COS | KW_TAN | KW_SEC | KW_CSC | KW_COT)
+}
+
 // Error Handles
 #[cold]
 #[inline(never)]
@@ -435,19 +464,38 @@ fn invalid_number_error(raw: &str, e: &impl std::fmt::Display) -> String {
 
 #[cold]
 #[inline(never)]
-fn unexpected_token_in_expression(token: &Token) -> Result<u32, String> {
-    Err(format!("Unexpected token in expression: {:?}", token))
+fn unexpected_prefix_error(token: &Token) -> String {
+    format!("Unexpected token in expression: {:?}", token)
 }
 
 #[cold]
 #[inline(never)]
-fn unexpected_infix_token(token: &Token) -> Result<u32, String> {
-    Err(format!("Unexpected token: {:?}", token))
+fn unexpected_infix_error(token: &Token) -> String {
+    format!("Unexpected token: {:?}", token)
 }
 
 #[cold]
 #[inline(never)]
-fn expected_rparen_error(found: &Token) -> String {
+fn unexpected_trailing_error(token: &Token, src: &str) -> String {
+    match token {
+        Token::Number { start, end } | Token::Variable { start, end, .. } => {
+            format!(
+                "Unexpected trailing token: '{}'",
+                &src[*start as usize..*end as usize]
+            )
+        }
+        other => format!("Unexpected trailing token: {:?}", other),
+    }
+}
+
+#[cold]
+#[inline(never)]
+fn expected_right_parenthesis_error(found: &Token) -> String {
+    if let Token::Variable { hash, .. } = found
+        && (*hash == KW_DEG || *hash == KW_RAD)
+    {
+        return "Deg/Rad must appear once, at the end of a trig function's argument".to_string();
+    }
     format!("Expected ')', found {:?}", found)
 }
 
@@ -462,11 +510,26 @@ mod tests {
     use super::*;
     use crate::lexer::Tokenizer;
 
+    fn parse(src: &str) -> (Vec<Node>, u32) {
+        let mut tokens = Vec::new();
+        let mut arena = Vec::new();
+        Tokenizer::new(src).tokenize(&mut tokens).unwrap();
+        let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
+        (arena, root)
+    }
+
+    fn try_parse(src: &str) -> Result<u32, String> {
+        let mut tokens = Vec::new();
+        let mut arena = Vec::new();
+        Tokenizer::new(src).tokenize(&mut tokens).unwrap();
+        Parser::new(&tokens, src, &mut arena).parse()
+    }
+
     #[test]
-    fn test_fn_known_function_kind() {
-        let node = known_function_kind(KW_SIN, 30);
+    fn test_fn_function_node() {
+        let node = function_node(KW_SIN, 30);
         assert_eq!(node, Some(Node::Sin(30)));
-        assert_eq!(known_function_kind(0, 30), None);
+        assert_eq!(function_node(0, 30), None);
     }
 
     #[test]
@@ -488,7 +551,7 @@ mod tests {
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let mut parser = Parser::new(&tokens, src, &mut arena);
 
-        let index = parser.push(Node::Number(42.0));
+        let index = parser.push_node(Node::Number(42.0));
         assert_eq!(index, 0);
         assert_eq!(parser.arena.len(), 1);
     }
@@ -628,5 +691,60 @@ mod tests {
         Tokenizer::new("1+").tokenize(&mut tokens).unwrap();
         let _ = Parser::new(&tokens, "1+", &mut arena).parse();
         assert_eq!(arena.capacity(), cap);
+    }
+
+    #[test]
+    fn test_trig_default_wraps_in_deg() {
+        // Parser::new defaults to Degrees
+        let (arena, root) = parse("sin(30)");
+        let Node::Sin(a) = arena[root as usize] else {
+            panic!()
+        };
+        assert!(matches!(arena[a as usize], Node::Deg(_)));
+    }
+
+    #[test]
+    fn test_explicit_rad_overrides_default() {
+        let (arena, root) = parse("sin(pi Rad)");
+        let Node::Sin(a) = arena[root as usize] else {
+            panic!()
+        };
+        assert!(matches!(arena[a as usize], Node::Rad(_)));
+    }
+
+    #[test]
+    fn test_unit_rejections() {
+        for src in [
+            "sin(30 Deg Deg)",
+            "sin(Deg)",
+            "sin(30 Deg + 1)",
+            "x(30 Deg)",
+            "Deg = 5",
+            "30 Deg",
+            "sinh(30 Deg)",
+        ] {
+            assert!(try_parse(src).is_err(), "{src} should fail");
+        }
+    }
+    #[test]
+    fn test_radians_mode_wraps_bare_trig_in_rad() {
+        let mut tokens = Vec::new();
+        let mut arena = Vec::new();
+        let src = "sin(30)";
+        Tokenizer::new(src).tokenize(&mut tokens).unwrap();
+        let root = Parser::new(&tokens, src, &mut arena)
+            .with_angle_mode(AngleMode::Radians)
+            .parse()
+            .unwrap();
+        let Node::Sin(a) = arena[root as usize] else {
+            panic!()
+        };
+        assert!(matches!(arena[a as usize], Node::Rad(_)));
+    }
+
+    #[test]
+    fn test_trailing_token_message_shows_text() {
+        let err = try_parse("sin 30").unwrap_err();
+        assert!(err.contains("'30'"), "got: {err}");
     }
 }

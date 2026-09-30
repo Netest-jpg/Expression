@@ -27,16 +27,16 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
                 return inner; // -(-x) -> x
             }
             if let Some(v) = as_number(arena, a) {
-                return push(arena, Node::Number(-v)); // -(n) -> -n
+                return push_node(arena, Node::Number(-v)); // -(n) -> -n
             }
-            push(arena, Node::Neg(a))
+            push_node(arena, Node::Neg(a))
         }
 
         Node::Add(a, b) => {
             let a = simplify(arena, a);
             let b = simplify(arena, b);
             if let (Some(x), Some(y)) = (as_number(arena, a), as_number(arena, b)) {
-                return push(arena, Node::Number(x + y)); // 2 + 3 -> 5
+                return push_node(arena, Node::Number(x + y)); // 2 + 3 -> 5
             }
             if is_zero(arena, a) {
                 return b; // 0 + x -> x
@@ -44,29 +44,29 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
             if is_zero(arena, b) {
                 return a; // x + 0 -> x
             }
-            push(arena, Node::Add(a, b))
+            push_node(arena, Node::Add(a, b))
         }
 
         Node::Sub(a, b) => {
             let a = simplify(arena, a);
             let b = simplify(arena, b);
             if let (Some(x), Some(y)) = (as_number(arena, a), as_number(arena, b)) {
-                return push(arena, Node::Number(x - y)); // 3 - 2 -> 1
+                return push_node(arena, Node::Number(x - y)); // 3 - 2 -> 1
             }
             if is_zero(arena, b) {
                 return a; // x - 0 -> x
             }
-            push(arena, Node::Sub(a, b))
+            push_node(arena, Node::Sub(a, b))
         }
 
         Node::Mul(a, b) => {
             let a = simplify(arena, a);
             let b = simplify(arena, b);
             if let (Some(x), Some(y)) = (as_number(arena, a), as_number(arena, b)) {
-                return push(arena, Node::Number(x * y)); // 3 * 5 -> 15
+                return push_node(arena, Node::Number(x * y)); // 3 * 5 -> 15
             }
             if is_zero(arena, a) || is_zero(arena, b) {
-                return push(arena, Node::Number(0.0)); // a * 0 -> 0 || 0 * b -> 0
+                return push_node(arena, Node::Number(0.0)); // a * 0 -> 0 || 0 * b -> 0
             }
             if is_one(arena, a) {
                 return b; // 1 * x -> x
@@ -74,19 +74,19 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
             if is_one(arena, b) {
                 return a; // x * 1 -> x
             }
-            push(arena, Node::Mul(a, b))
+            push_node(arena, Node::Mul(a, b))
         }
         #[rustfmt::skip]
         Node::Div(a, b) => {
             let a = simplify(arena, a);
             let b = simplify(arena, b);
             if let (Some(x), Some(y)) = (as_number(arena, a), as_number(arena, b)) && y != 0.0 {
-                return push(arena, Node::Number(x / y)); // 15 / 5 -> 3
+                return push_node(arena, Node::Number(x / y)); // 15 / 5 -> 3
             }
             if is_one(arena, b) {
                 return a; // x / 1 -> x
             }
-            push(arena, Node::Div(a, b))
+            push_node(arena, Node::Div(a, b))
         }
 
         #[rustfmt::skip]
@@ -95,10 +95,10 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
             let exponent = simplify(arena, exponent);
 
             if let (Some(x), Some(y)) = (as_number(arena, base), as_number(arena, exponent)) {
-                return push(arena, Node::Number(x.powf(y))); // 2^2 -> 4
+                return push_node(arena, Node::Number(x.powf(y))); // 2^2 -> 4
             }
             if is_zero(arena, exponent) {
-                return push(arena, Node::Number(1.0)); // x^0 -> 1
+                return push_node(arena, Node::Number(1.0)); // x^0 -> 1
             }
             if is_one(arena, exponent) {
                 return base; // x^1 -> x
@@ -108,22 +108,49 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
                 && (*b2 > 0.0 && *b2 != 1.0 && b1 == b2) {
                     return arg; // b^log_b(k) = k where, b is a Number
                 }
-            push(arena, Node::Pow(base, exponent))
+            push_node(arena, Node::Pow(base, exponent))
         }
 
         Node::Equation(a, b) => {
             let a = simplify(arena, a);
             let b = simplify(arena, b);
-            push(arena, Node::Equation(a, b))
+            push_node(arena, Node::Equation(a, b))
         }
 
-        Node::Sin(a) => simplify_unary(arena, a, Node::Sin, f64::sin),
-        Node::Cos(a) => simplify_unary(arena, a, Node::Cos, f64::cos),
-        Node::Tan(a) => simplify_unary(arena, a, Node::Tan, f64::tan),
+        Node::Deg(a) => {
+            let a = simplify(arena, a);
+            push_node(arena, Node::Deg(a))
+        }
+        Node::Rad(a) => {
+            let a = simplify(arena, a);
+            push_node(arena, Node::Rad(a))
+        }
 
-        Node::Sec(a) => simplify_unary(arena, a, Node::Sec, |v| 1.0 / v.cos()),
-        Node::Csc(a) => simplify_unary(arena, a, Node::Csc, |v| 1.0 / v.sin()),
-        Node::Cot(a) => simplify_unary(arena, a, Node::Cot, |v| v.cos() / v.sin()),
+        Node::Sin(a) => simplify_trig(arena, a, Node::Sin, f64::sin, crate::angles::sin_deg),
+        Node::Cos(a) => simplify_trig(arena, a, Node::Cos, f64::cos, crate::angles::cos_deg),
+        Node::Tan(a) => simplify_trig(arena, a, Node::Tan, f64::tan, crate::angles::tan_deg),
+
+        Node::Sec(a) => simplify_trig(
+            arena,
+            a,
+            Node::Sec,
+            |v| 1.0 / v.cos(),
+            |v| 1.0 / crate::angles::cos_deg(v),
+        ),
+        Node::Csc(a) => simplify_trig(
+            arena,
+            a,
+            Node::Csc,
+            |v| 1.0 / v.sin(),
+            |v| 1.0 / crate::angles::sin_deg(v),
+        ),
+        Node::Cot(a) => simplify_trig(
+            arena,
+            a,
+            Node::Cot,
+            |v| v.cos() / v.sin(),
+            |v| crate::angles::cos_deg(v) / crate::angles::sin_deg(v),
+        ),
 
         Node::Asin(a) => simplify_unary(arena, a, Node::Asin, f64::asin),
         Node::Acos(a) => simplify_unary(arena, a, Node::Acos, f64::acos),
@@ -162,22 +189,22 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
             if let (Some(base), Some(arg)) = (as_number(arena, base), as_number(arena, arg))
                 && (base > 0.0 && base != 1.0) {
                     if arg == 1.0 {
-                        return push(arena, Node::Number(0.0)); // log_2(1) -> 0
+                        return push_node(arena, Node::Number(0.0)); // log_2(1) -> 0
                     }
                     if arg == base {
-                        return push(arena, Node::Number(1.0)); // log_2(2) -> 1
+                        return push_node(arena, Node::Number(1.0)); // log_2(2) -> 1
                     }
-                    return push(arena, Node::Number(arg.log(base))); // log_2(8) -> 3
+                    return push_node(arena, Node::Number(arg.log(base))); // log_2(8) -> 3
                 }
 
-            push(arena, Node::LogBase(base, arg))
+            push_node(arena, Node::LogBase(base, arg))
         }
         Node::Sqrt(a) => simplify_unary(arena, a, Node::Sqrt, f64::sqrt),
     }
 }
 
 #[inline(always)]
-fn push(arena: &mut Vec<Node>, node: Node) -> u32 {
+fn push_node(arena: &mut Vec<Node>, node: Node) -> u32 {
     let idx = arena.len() as u32;
     arena.push(node);
     idx
@@ -199,9 +226,35 @@ fn as_number(arena: &[Node], idx: u32) -> Option<f64> {
 fn simplify_unary(arena: &mut Vec<Node>, arg: u32, ctor: fn(u32) -> Node, f: fn(f64) -> f64) -> u32 {
     let arg = simplify(arena, arg);
     if let Some(v) = as_number(arena, arg) {
-        return push(arena, Node::Number(f(v)));
+        return push_node(arena, Node::Number(f(v)));
     }
-    push(arena, ctor(arg))
+    push_node(arena, ctor(arg))
+}
+
+/// Like `simplify_unary`, but for forward trig: the argument is a `Deg`/`Rad` wrapper.
+/// Folds through `f_deg`/`f_rad` when the wrapped value is a Number, otherwise rebuilds.
+fn simplify_trig(
+    arena: &mut Vec<Node>,
+    arg: u32,
+    ctor: fn(u32) -> Node,
+    f_rad: fn(f64) -> f64,
+    f_deg: fn(f64) -> f64,
+) -> u32 {
+    let arg = simplify(arena, arg); // simplifies the inner expression, keeps the wrapper
+    match arena[arg as usize] {
+        Node::Deg(inner) => {
+            if let Some(v) = as_number(arena, inner) {
+                return push_node(arena, Node::Number(f_deg(v)));
+            }
+        }
+        Node::Rad(inner) => {
+            if let Some(v) = as_number(arena, inner) {
+                return push_node(arena, Node::Number(f_rad(v)));
+            }
+        }
+        _ => {}
+    }
+    push_node(arena, ctor(arg))
 }
 
 #[inline(always)]
@@ -403,5 +456,22 @@ mod tests {
             Node::Pow(_, _) => {}
             ref other => panic!("expected Pow left unsimplified, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_trig_degrees_fold() {
+        let (arena, root) = run("sin(30)");
+        assert_number(&arena, root, 0.5);
+        let (arena, root) = run("cos(90)");
+        assert_number(&arena, root, 0.0);
+    }
+
+    #[test]
+    fn test_symbolic_trig_keeps_unit() {
+        let (arena, root) = run("sin(x Rad)");
+        let Node::Sin(a) = arena[root as usize] else {
+            panic!("expected Sin")
+        };
+        assert!(matches!(arena[a as usize], Node::Rad(_)));
     }
 }

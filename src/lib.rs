@@ -1,3 +1,4 @@
+pub mod angles;
 pub mod evaluation;
 pub mod lexer;
 pub mod parser;
