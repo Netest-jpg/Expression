@@ -2,9 +2,9 @@
 use crate::angles::AngleMode;
 use crate::lexer::{
     BP_UNARY, KW_ACOS, KW_ACOSH, KW_ACOT, KW_ACOTH, KW_ACSC, KW_ACSCH, KW_ASEC, KW_ASECH, KW_ASIN,
-    KW_ASINH, KW_ATAN, KW_ATANH, KW_COS, KW_COSH, KW_COT, KW_COTH, KW_CSC, KW_CSCH, KW_DEG, KW_E,
-    KW_LN, KW_LOG, KW_PI, KW_RAD, KW_SEC, KW_SECH, KW_SIN, KW_SINH, KW_SQRT, KW_TAN, KW_TANH,
-    Token, Tokenizer,
+    KW_ASINH, KW_ATAN, KW_ATANH, KW_CBRT, KW_COS, KW_COSH, KW_COT, KW_COTH, KW_CSC, KW_CSCH,
+    KW_DEG, KW_E, KW_LN, KW_LOG, KW_PI, KW_RAD, KW_SEC, KW_SECH, KW_SIN, KW_SINH, KW_SQRT, KW_TAN,
+    KW_TANH, Token, Tokenizer,
 };
 use fast_float2 as fast_float;
 
@@ -60,7 +60,10 @@ pub enum Node {
     Ln(u32),
     Log(u32),
     LogBase(u32, u32),
+
     Sqrt(u32),
+    Cbrt(u32),
+    Root(u32, u32),
 
     Equation(u32, u32),
 }
@@ -193,12 +196,22 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                     );
                 }
                 if matches!(self.peek(), Token::LeftParenthesis) {
-                    if self.src[start as usize..end as usize].starts_with("log_") {
-                        let base = self.parse_log_base(start, end)?;
+                    let src = self.src;
+                    let name = &src[start as usize..end as usize];
+
+                    if name.starts_with("log_") {
+                        let base = self.parse_subscript(start, end, "log_", "base")?;
                         self.advance(); // eat '('
                         let arg = self.pratt_parse(0)?;
                         self.expect_right_parenthesis()?;
                         return Ok(self.push_node(Node::LogBase(base, arg)));
+                    }
+                    if name.starts_with("root_") {
+                        let index = self.parse_subscript(start, end, "root_", "index")?;
+                        self.advance(); // eat '('
+                        let arg = self.pratt_parse(0)?;
+                        self.expect_right_parenthesis()?;
+                        return Ok(self.push_node(Node::Root(index, arg)));
                     }
 
                     self.advance(); // eat '('
@@ -246,32 +259,35 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         token
     }
 
-    /// Parses the base out of a `log_<base>` identifier and returns its
-    /// arena index.
+    /// Parses the subscript after `prefix` (e.g. the `2` in `log_2` or `root_2`)
+    /// as its own expression and returns its arena index.
     ///
-    /// `start`/`end` are the byte range of the full identifier (e.g. `log_2`);
-    /// the base is everything after the `log_` prefix (4 bytes). The base
-    /// text is re-tokenized and parsed as its own expression, with resulting
-    /// token offsets adjusted to stay consistent with the original source
-    /// positions (so error messages point at the right place in `self.src`).
+    /// `start`/`end` are the byte range of the full variable. The text after
+    /// `prefix` is re-tokenized and parsed with its token offsets shifted to
+    /// match `self.src`, so error messages point at the right place.
     ///
     /// # Errors
-    /// - Returns `Err` if there's no text after the `log_` prefix.
-    /// - Returns `Err` if the base fails to tokenize.
-    /// - Returns `Err` if the base fails to parse as a valid expression.
+    /// - No text after `prefix` ("Expected {label} after {prefix}").
+    /// - The subscript fails to tokenize or parse.
     #[inline(always)]
-    fn parse_log_base(&mut self, start: u32, end: u32) -> Result<u32, String> {
-        let base_start = start + 4;
-        if base_start >= end {
-            return Err("Expected base after log_".to_string());
+    fn parse_subscript(
+        &mut self,
+        start: u32,
+        end: u32,
+        prefix: &str,
+        label: &str,
+    ) -> Result<u32, String> {
+        let sub_start = start + prefix.len() as u32;
+        if sub_start >= end {
+            return Err(format!("Expected {label} after {prefix}"));
         }
 
-        let base_src = &self.src[base_start as usize..end as usize];
+        let sub_src = &self.src[sub_start as usize..end as usize];
         let mut tokens = Vec::new();
-        Tokenizer::new(base_src)
+        Tokenizer::new(sub_src)
             .tokenize(&mut tokens)
-            .map_err(|e| invalid_log_base_error(&e))?;
-        offset_tokens(&mut tokens, base_start);
+            .map_err(|e| format!("Invalid {label}: {e}"))?;
+        offset_tokens(&mut tokens, sub_start);
 
         Parser::new(&tokens, self.src, self.arena)
             .with_angle(self.angle)
@@ -422,27 +438,37 @@ fn function_node(hash: u64, arg: u32) -> Option<Node> {
         KW_SIN => Node::Sin(arg),
         KW_COS => Node::Cos(arg),
         KW_TAN => Node::Tan(arg),
+
         KW_LN => Node::Ln(arg),
         KW_LOG => Node::Log(arg),
+
         KW_SQRT => Node::Sqrt(arg),
+        KW_CBRT => Node::Cbrt(arg),
+
         KW_SEC => Node::Sec(arg),
         KW_CSC => Node::Csc(arg),
         KW_COT => Node::Cot(arg),
+
         KW_ASIN => Node::Asin(arg),
         KW_ACOS => Node::Acos(arg),
         KW_ATAN => Node::Atan(arg),
+
         KW_ACSC => Node::Acsc(arg),
         KW_ASEC => Node::Asec(arg),
         KW_ACOT => Node::Acot(arg),
+
         KW_SINH => Node::Sinh(arg),
         KW_COSH => Node::Cosh(arg),
         KW_TANH => Node::Tanh(arg),
+
         KW_SECH => Node::Sech(arg),
         KW_CSCH => Node::Csch(arg),
         KW_COTH => Node::Coth(arg),
+
         KW_ASINH => Node::Asinh(arg),
         KW_ACOSH => Node::Acosh(arg),
         KW_ATANH => Node::Atanh(arg),
+
         KW_ASECH => Node::Asech(arg),
         KW_ACSCH => Node::Acsch(arg),
         KW_ACOTH => Node::Acoth(arg),
@@ -455,7 +481,7 @@ fn is_forward_trig(hash: u64) -> bool {
     matches!(hash, KW_SIN | KW_COS | KW_TAN | KW_SEC | KW_CSC | KW_COT)
 }
 
-// Error Handles
+// Error Handles-----------------------------------------------------------
 #[cold]
 #[inline(never)]
 fn invalid_number_error(raw: &str, e: &impl std::fmt::Display) -> String {
@@ -498,12 +524,7 @@ fn expected_right_parenthesis_error(found: &Token) -> String {
     }
     format!("Expected ')', found {:?}", found)
 }
-
-#[cold]
-#[inline(never)]
-fn invalid_log_base_error(e: impl std::fmt::Display) -> String {
-    format!("Invalid log base: {e}")
-}
+//----------------------------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -746,5 +767,30 @@ mod tests {
     fn test_trailing_token_message_shows_text() {
         let err = try_parse("sin 30").unwrap_err();
         assert!(err.contains("'30'"), "got: {err}");
+    }
+
+    #[test]
+    fn test_root_parse() {
+        let (arena, root) = parse("root_3(8)");
+        let Node::Root(n, x) = arena[root as usize] else {
+            panic!("Expected Root")
+        };
+        assert_eq!(arena[n as usize], Node::Number(3.0));
+        assert_eq!(arena[x as usize], Node::Number(8.0));
+
+        assert!(
+            try_parse("root_(8)")
+                .unwrap_err()
+                .contains("Expected index after root_")
+        );
+    }
+
+    #[test]
+    fn test_cbrt_parse() {
+        let (arena, root) = parse("cbrt(8)");
+        let Node::Cbrt(a) = arena[root as usize] else {
+            panic!("Expected Cbrt")
+        };
+        assert_eq!(arena[a as usize], Node::Number(8.0));
     }
 }

@@ -200,6 +200,21 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
             push_node(arena, Node::LogBase(base, arg))
         }
         Node::Sqrt(a) => simplify_unary(arena, a, Node::Sqrt, f64::sqrt),
+        Node::Cbrt(a) => simplify_unary(arena, a, Node::Cbrt, f64::cbrt),
+        Node::Root(n, x) => {
+            let n = simplify(arena, n);
+            let x = simplify(arena, x);
+            if is_one(arena, n) {
+                return x; // root_1(x) -> x
+            }
+            if let (Some(nv), Some(xv)) = (as_number(arena, n), as_number(arena, x)) {
+                let r = crate::evaluation::nth_root(nv, xv);
+                if !r.is_nan() {
+                    return push_node(arena, Node::Number(r)); // root_3(27) -> 3
+                }
+            }
+            push_node(arena, Node::Root(n, x))
+        }
     }
 }
 
@@ -473,5 +488,25 @@ mod tests {
             panic!("expected Sin")
         };
         assert!(matches!(arena[a as usize], Node::Rad(_)));
+    }
+
+    #[test]
+    fn test_root_fold_and_symbolic() {
+        let (arena, root) = run("root_3(27)");
+        assert_number(&arena, root, 3.0);
+
+        let (arena, root) = run("root_2(-4)"); // NaN, so left unfolded
+        assert!(matches!(arena[root as usize], Node::Root(_, _)));
+
+        let (arena, root) = run("root_n(x)");
+        assert!(matches!(arena[root as usize], Node::Root(_, _)));
+    }
+
+    #[test]
+    fn test_cbrt_fold() {
+        let (arena, root) = run("cbrt(27)");
+        assert_number(&arena, root, 3.0);
+        let (arena, root) = run("cbrt(-8)");
+        assert_number(&arena, root, -2.0);
     }
 }

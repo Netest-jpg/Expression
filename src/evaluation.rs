@@ -97,7 +97,35 @@ pub fn evaluate(arena: &[Node], idx: u32, vars: &VariableBank) -> Result<f64, Ev
             Ok(evaluate(arena, *arg, vars)?.log(evaluate(arena, *base, vars)?))
         }
         Node::Sqrt(a) => Ok(evaluate(arena, *a, vars)?.sqrt()),
+        Node::Cbrt(a) => Ok(evaluate(arena, *a, vars)?.cbrt()),
+        Node::Root(n, x) => Ok(nth_root(
+            evaluate(arena, *n, vars)?,
+            evaluate(arena, *x, vars)?,
+        )),
     }
+}
+
+/// Real n-th root. Odd integer `n` accepts negative `x` (root_3(-8) = -2);
+/// otherwise a negative `x` gives NaN. `n == 0` gives NaN.
+pub(crate) fn nth_root(n: f64, x: f64) -> f64 {
+    if n == 0.0 {
+        return f64::NAN;
+    }
+    if n == 2.0 {
+        return x.sqrt();
+    }
+    if n == 3.0 {
+        return x.cbrt();
+    }
+    if x < 0.0 {
+        let odd_integer = n.fract() == 0.0 && (n % 2.0).abs() == 1.0;
+        return if odd_integer {
+            -(-x).powf(1.0 / n)
+        } else {
+            f64::NAN
+        };
+    }
+    x.powf(1.0 / n)
 }
 
 /// Attempts to interpret the expression at `root` as a simple variable assignment of the
@@ -505,5 +533,15 @@ mod tests {
         assert_eq!(parse_and_eval("cos(90)"), 0.0);
         assert!((parse_and_eval("sin(pi Rad)")).abs() < 1e-12);
         assert_eq!(parse_and_eval("sin(90 Deg)"), 1.0);
+    }
+    #[test]
+    fn test_roots() {
+        assert!((parse_and_eval("root_3(27)") - 3.0).abs() < 1e-10);
+        assert!((parse_and_eval("root_3(-8)") + 2.0).abs() < 1e-10);
+        assert!((parse_and_eval("root_2(16)") - 4.0).abs() < 1e-10);
+        assert!((parse_and_eval("root_4(16)") - 2.0).abs() < 1e-10);
+        assert!((parse_and_eval("cbrt(27)") - 3.0).abs() < 1e-10);
+        assert!((parse_and_eval("cbrt(-8)") + 2.0).abs() < 1e-10);
+        assert!(parse_and_eval("root_4(-16)").is_nan());
     }
 }

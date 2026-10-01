@@ -36,6 +36,8 @@ pub const KW_CSC: u64 = keyword_hash(b"csc");
 pub const KW_COT: u64 = keyword_hash(b"cot");
 
 pub const KW_SQRT: u64 = keyword_hash(b"sqrt");
+pub const KW_CBRT: u64 = keyword_hash(b"cbrt");
+
 pub const KW_PI: u64 = keyword_hash(b"pi");
 pub const KW_E: u64 = keyword_hash(b"e");
 
@@ -247,7 +249,7 @@ impl Token {
     pub fn raw<'src>(&self, src: &'src str) -> &'src str {
         match self {
             Token::Number { start, end } => unsafe { Self::slice_unchecked(src, *start, *end) },
-            _ => panic!("Token::raw called on non-Number token"),
+            _ => panic!("Token::raw() called on a non-Number token"),
         }
     }
 
@@ -470,7 +472,7 @@ impl<'src> Tokenizer<'src> {
         self.pos += 1;
     }
 
-    /// Hashes the identifier starting at `self.pos` without consuming it.
+    /// Hashes the variable starting at `self.pos` without consuming it.
     #[inline(always)]
     fn peek_variable_(&self) -> u64 {
         let mut hash = FNV_OFFSET;
@@ -625,7 +627,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Token::raw called on non-Number token")]
+    #[should_panic]
     fn test_fn_raw_panics_on_non_number() {
         let src = "123 + 456";
         let token = Token::Plus;
@@ -731,7 +733,7 @@ mod tests {
             (Token::Variable { hash: h1, .. }, Token::Variable { hash: h2, .. }) => {
                 assert_eq!(h1, h2);
             }
-            _ => panic!("expected Identifiers"),
+            _ => panic!("expected Variables"),
         }
     }
 

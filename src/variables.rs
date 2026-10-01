@@ -1,12 +1,6 @@
 use crate::parser::Node;
 pub const VARIABLE_LIMIT: usize = 64;
 
-#[cold]
-#[inline(never)]
-fn variable_limit_reached_err() -> String {
-    format!("Variable limit ({VARIABLE_LIMIT}) reached; clear some variables first")
-}
-
 pub struct VariableBank {
     entries: [(u64, f64); VARIABLE_LIMIT],
     len: usize,
@@ -329,6 +323,7 @@ fn collect_vars_inner(arena: &[Node], idx: u32, out: &mut VariableList) {
         | Node::Ln(a)
         | Node::Log(a)
         | Node::Sqrt(a)
+        | Node::Cbrt(a)
         | Node::Deg(a)
         | Node::Rad(a) => {
             collect_vars_inner(arena, *a, out);
@@ -339,12 +334,20 @@ fn collect_vars_inner(arena: &[Node], idx: u32, out: &mut VariableList) {
         | Node::Div(a, b)
         | Node::Pow(a, b)
         | Node::LogBase(a, b)
+        | Node::Root(a, b)
         | Node::Equation(a, b) => {
             collect_vars_inner(arena, *a, out);
             collect_vars_inner(arena, *b, out);
         }
     }
 }
+// Error Handles--------------------------------------------------------------------
+#[cold]
+#[inline(never)]
+fn variable_limit_reached_err() -> String {
+    format!("Variable limit ({VARIABLE_LIMIT}) reached; clear some variables first")
+}
+//----------------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {

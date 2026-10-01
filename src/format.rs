@@ -19,7 +19,7 @@ pub fn write_tokens<W: Write>(out: &mut W, tokens: &[Token], src: &str, verbose:
             Token::Variable { start, end, .. } => {
                 let s = &src[*start as usize..*end as usize];
                 if verbose {
-                    write!(out, "\n  Identifier({s})")?;
+                    write!(out, "\n  Variable({s})")?;
                 } else {
                     write!(out, " {s}")?;
                 }
@@ -129,8 +129,11 @@ pub fn write_node_recursive<W: Write>(out: &mut W, idx: u32, arena: &[Node], src
 
         Node::Ln(a) => write_unary_recursive(out, "ln", *a, arena, src),
         Node::Log(a) => write_unary_recursive(out, "log", *a, arena, src),
-        Node::LogBase(base, arg) => write_log_base_recursive(out, *base, *arg, arena, src),
+        Node::LogBase(base, arg) => write_subscript_recursive(out, "log_", *base, *arg, arena, src),
+
         Node::Sqrt(a) => write_unary_recursive(out, "sqrt", *a, arena, src),
+        Node::Cbrt(a) => write_unary_recursive(out, "cbrt", *a, arena, src),
+        Node::Root(n, x) => write_subscript_recursive(out, "root_", *n, *x, arena, src),
 
         Node::Sec(a) => write_unary_recursive(out, "sec", *a, arena, src),
         Node::Csc(a) => write_unary_recursive(out, "csc", *a, arena, src),
@@ -257,7 +260,10 @@ fn write_node_compact<W: Write>(out: &mut W, node: &Node, src: &str) -> std::io:
         Node::Ln(a) => write!(out, "ln(n{a})"),
         Node::Log(a) => write!(out, "log(n{a})"),
         Node::LogBase(base, arg) => write!(out, "log_n{base}(n{arg})"),
+
         Node::Sqrt(a) => write!(out, "sqrt(n{a})"),
+        Node::Cbrt(a) => write!(out, "cbrt(n{a})"),
+        Node::Root(n, x) => write!(out, "root_n{n}(n{x})"),
 
         Node::Sec(a) => write!(out, "sec(n{a})"),
         Node::Csc(a) => write!(out, "csc(n{a})"),
@@ -320,7 +326,10 @@ fn write_node_verbose<W: Write>(out: &mut W, node: &Node, src: &str) -> std::io:
         Node::Ln(c) => write!(out, "Ln(n{c})"),
         Node::Log(c) => write!(out, "Log(n{c})"),
         Node::LogBase(base, arg) => write!(out, "LogBase(n{base}, n{arg})"),
+
         Node::Sqrt(c) => write!(out, "Sqrt(n{c})"),
+        Node::Cbrt(c) => write!(out, "Cbrt(n{c})"),
+        Node::Root(n, x) => write!(out, "Root(n{n}, n{x})"),
 
         Node::Sec(c) => write!(out, "Sec(n{c})"),
         Node::Csc(c) => write!(out, "Csc(n{c})"),
@@ -358,9 +367,9 @@ fn write_unary_recursive<W: Write>(out: &mut W, name: &str, a: u32, arena: &[Nod
 }
 
 #[rustfmt::skip]
-fn write_log_base_recursive<W: Write>(out: &mut W, base: u32, arg: u32, arena: &[Node], src: &str) -> std::io::Result<()> {
-    write!(out, "log_")?;
-    if is_log_base_atomic(&arena[base as usize]) {
+fn write_subscript_recursive<W: Write>(out: &mut W, prefix: &str, base: u32, arg: u32, arena: &[Node], src: &str) -> std::io::Result<()> {
+    write!(out, "{prefix}")?;
+    if is_subscript_atomic(&arena[base as usize]) {
         write_node_recursive(out, base, arena, src)?;
     } else {
         write!(out, "(")?;
@@ -372,7 +381,7 @@ fn write_log_base_recursive<W: Write>(out: &mut W, base: u32, arg: u32, arena: &
     write!(out, ")")
 }
 
-fn is_log_base_atomic(node: &Node) -> bool {
+fn is_subscript_atomic(node: &Node) -> bool {
     matches!(
         node,
         Node::Number(_) | Node::Constant(_) | Node::Variable(_, _, _)
