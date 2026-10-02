@@ -199,6 +199,7 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
 
             push_node(arena, Node::LogBase(base, arg))
         }
+
         Node::Sqrt(a) => simplify_unary(arena, a, Node::Sqrt, f64::sqrt),
         Node::Cbrt(a) => simplify_unary(arena, a, Node::Cbrt, f64::cbrt),
         Node::Root(n, x) => {
@@ -214,6 +215,16 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
                 }
             }
             push_node(arena, Node::Root(n, x))
+        }
+
+        Node::Factorial(a) => {
+            let a = simplify(arena, a);
+            if let Some(v) = as_number(arena, a)
+                && let Some(r) = crate::evaluation::factorial(v)
+            {
+                return push_node(arena, Node::Number(r)); // 5! -> 120
+            }
+            push_node(arena, Node::Factorial(a))
         }
     }
 }
@@ -508,5 +519,16 @@ mod tests {
         assert_number(&arena, root, 3.0);
         let (arena, root) = run("cbrt(-8)");
         assert_number(&arena, root, -2.0);
+    }
+    #[test]
+    fn test_factorial_fold() {
+        let (arena, root) = run("5!");
+        assert_number(&arena, root, 120.0);
+
+        let (arena, root) = run("x!");
+        assert!(matches!(arena[root as usize], Node::Factorial(_)));
+
+        let (arena, root) = run("(-1)!"); // invalid domain, left unfolded
+        assert!(matches!(arena[root as usize], Node::Factorial(_)));
     }
 }

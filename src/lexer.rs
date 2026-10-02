@@ -115,6 +115,7 @@ enum ByteClass {
     Exponent,
     LeftParenthesis,
     RightParenthesis,
+    Factorial,
     Equals,
     Unknown,
 }
@@ -159,6 +160,7 @@ const fn build_byte_class_table() -> [ByteClass; 256] {
     t[b'^' as usize] = ByteClass::Exponent;
     t[b'(' as usize] = ByteClass::LeftParenthesis;
     t[b')' as usize] = ByteClass::RightParenthesis;
+    t[b'!' as usize] = ByteClass::Factorial;
     t[b'=' as usize] = ByteClass::Equals;
     t
 }
@@ -184,6 +186,7 @@ pub enum Token {
     LeftParenthesis,
     RightParenthesis,
     Equals,
+    Factorial,
     EndOfFile,
 }
 
@@ -192,6 +195,7 @@ pub const BP_ADD: u8 = 10;
 pub const BP_MUL: u8 = 20;
 pub const BP_EXP: u8 = 30;
 pub const BP_UNARY: u8 = 25;
+pub const BP_FACTORIAL: u8 = 40;
 
 impl Token {
     /// Returns the Left Binding Power (LBP) of a [`Token`]
@@ -202,6 +206,7 @@ impl Token {
             Token::Plus | Token::Minus => BP_ADD,
             Token::Multiply | Token::Divide => BP_MUL,
             Token::Exponent => BP_EXP,
+            Token::Factorial => BP_FACTORIAL,
             Token::LeftParenthesis => BP_MUL, // implicit multiply x(0) -> x*0
             // Number, Variable, RightParenthesis, EndOfFile
             _ => 0,
@@ -216,7 +221,7 @@ impl Token {
             Token::Plus | Token::Minus => BP_ADD,
             Token::Multiply | Token::Divide => BP_MUL,
             Token::Exponent => BP_EXP - 1,
-            // Number, Variable, LeftParenthesis, RightParenthesis, EndOfFile
+            // Number, Variable, Factorial, LeftParenthesis, RightParenthesis, EndOfFile
             _ => 0,
         }
     }
@@ -322,6 +327,7 @@ impl std::fmt::Debug for Token {
             Token::Exponent => write!(f, "^"),
             Token::LeftParenthesis => write!(f, "("),
             Token::RightParenthesis => write!(f, ")"),
+            Token::Factorial => write!(f, "!"),
             Token::Equals => write!(f, "="),
             Token::EndOfFile => write!(f, "EndOfFile"),
         }
@@ -442,6 +448,11 @@ impl<'src> Tokenizer<'src> {
                 ByteClass::RightParenthesis => {
                     self.advance();
                     tokens.push(Token::RightParenthesis);
+                }
+
+                ByteClass::Factorial => {
+                    self.advance();
+                    tokens.push(Token::Factorial);
                 }
 
                 ByteClass::Equals => {
@@ -769,5 +780,13 @@ mod tests {
         assert!(s.starts_with("Number("));
         let s = format!("{:?}", tokens[2]);
         assert!(s.starts_with("Variable("));
+    }
+
+    #[test]
+    fn test_factorial_token() {
+        let (tokens, _) = tok("5!");
+        // Number, Factorial, EndOfFile
+        assert_eq!(tokens.len(), 3);
+        assert_eq!(tokens[1], Token::Factorial);
     }
 }

@@ -33,6 +33,7 @@ pub fn write_tokens<W: Write>(out: &mut W, tokens: &[Token], src: &str, verbose:
                     Token::Exponent => "^",
                     Token::LeftParenthesis => "(",
                     Token::RightParenthesis => ")",
+                    Token::Factorial => "!",
                     Token::Equals => "=",
                     _ => unreachable!(),
                 };
@@ -134,6 +135,24 @@ pub fn write_node_recursive<W: Write>(out: &mut W, idx: u32, arena: &[Node], src
         Node::Sqrt(a) => write_unary_recursive(out, "sqrt", *a, arena, src),
         Node::Cbrt(a) => write_unary_recursive(out, "cbrt", *a, arena, src),
         Node::Root(n, x) => write_subscript_recursive(out, "root_", *n, *x, arena, src),
+
+        Node::Factorial(a) => {
+            let a = *a;
+            let child = &arena[a as usize];
+            // Parenthesize anything that would re-parse differently under a postfix `!`:
+            // binary operators, `-(..)`, equations, and negative number literals.
+            let needs_parens = node_bp(child).is_some()
+                || matches!(child, Node::Neg(_) | Node::Equation(_, _))
+                || matches!(child, Node::Number(v) if v.is_sign_negative());
+            if needs_parens {
+                write!(out, "(")?;
+            }
+            write_node_recursive(out, a, arena, src)?;
+            if needs_parens {
+                write!(out, ")")?;
+            }
+            write!(out, "!")
+        }
 
         Node::Sec(a) => write_unary_recursive(out, "sec", *a, arena, src),
         Node::Csc(a) => write_unary_recursive(out, "csc", *a, arena, src),
@@ -265,6 +284,8 @@ fn write_node_compact<W: Write>(out: &mut W, node: &Node, src: &str) -> std::io:
         Node::Cbrt(a) => write!(out, "cbrt(n{a})"),
         Node::Root(n, x) => write!(out, "root_n{n}(n{x})"),
 
+        Node::Factorial(a) => write!(out, "n{a}!"),
+
         Node::Sec(a) => write!(out, "sec(n{a})"),
         Node::Csc(a) => write!(out, "csc(n{a})"),
         Node::Cot(a) => write!(out, "cot(n{a})"),
@@ -330,6 +351,8 @@ fn write_node_verbose<W: Write>(out: &mut W, node: &Node, src: &str) -> std::io:
         Node::Sqrt(c) => write!(out, "Sqrt(n{c})"),
         Node::Cbrt(c) => write!(out, "Cbrt(n{c})"),
         Node::Root(n, x) => write!(out, "Root(n{n}, n{x})"),
+
+        Node::Factorial(c) => write!(out, "Factorial(n{c})"),
 
         Node::Sec(c) => write!(out, "Sec(n{c})"),
         Node::Csc(c) => write!(out, "Csc(n{c})"),

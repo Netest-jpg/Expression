@@ -324,6 +324,7 @@ fn collect_vars_inner(arena: &[Node], idx: u32, out: &mut VariableList) {
         | Node::Log(a)
         | Node::Sqrt(a)
         | Node::Cbrt(a)
+        | Node::Factorial(a)
         | Node::Deg(a)
         | Node::Rad(a) => {
             collect_vars_inner(arena, *a, out);

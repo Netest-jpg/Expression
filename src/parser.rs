@@ -65,6 +65,8 @@ pub enum Node {
     Cbrt(u32),
     Root(u32, u32),
 
+    Factorial(u32),
+
     Equation(u32, u32),
 }
 
@@ -381,6 +383,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 self.expect_right_parenthesis()?;
                 Ok(self.push_node(Node::Mul(left, right)))
             }
+            Token::Factorial => Ok(self.push_node(Node::Factorial(left))),
             other => Err(unexpected_infix_error(&other)),
         }
     }
@@ -792,5 +795,42 @@ mod tests {
             panic!("Expected Cbrt")
         };
         assert_eq!(arena[a as usize], Node::Number(8.0));
+    }
+
+    #[test]
+    fn test_factorial_precedence() {
+        // -3! parses as -(3!)
+        let (arena, root) = parse("-3!");
+        let Node::Neg(inner) = arena[root as usize] else {
+            panic!("expected Neg")
+        };
+        assert!(matches!(arena[inner as usize], Node::Factorial(_)));
+
+        // 2^3! parses as 2^(3!)
+        let (arena, root) = parse("2^3!");
+        let Node::Pow(_, exp) = arena[root as usize] else {
+            panic!("expected Pow")
+        };
+        assert!(matches!(arena[exp as usize], Node::Factorial(_)));
+
+        // (2+1)! applies to the whole group
+        let (arena, root) = parse("(2+1)!");
+        let Node::Factorial(inner) = arena[root as usize] else {
+            panic!("expected Factorial")
+        };
+        assert!(matches!(arena[inner as usize], Node::Add(_, _)));
+
+        // 3!! is (3!)!
+        let (arena, root) = parse("3!!");
+        let Node::Factorial(inner) = arena[root as usize] else {
+            panic!("expected Factorial")
+        };
+        assert!(matches!(arena[inner as usize], Node::Factorial(_)));
+    }
+
+    #[test]
+    fn test_factorial_rejections() {
+        assert!(try_parse("!3").is_err()); // nothing to apply to
+        assert!(try_parse("3! 4").is_err()); // trailing token
     }
 }

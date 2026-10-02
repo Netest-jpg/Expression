@@ -5,6 +5,7 @@ use crate::variables::{VARIABLE_LIMIT, VariableBank, collect_variables};
 pub enum EvaluationError {
     UnboundVariable,
     IsEquation,
+    FactorialDomain,
 }
 
 impl std::fmt::Display for EvaluationError {
@@ -13,6 +14,9 @@ impl std::fmt::Display for EvaluationError {
             EvaluationError::UnboundVariable => write!(f, "Unbound variable"),
             EvaluationError::IsEquation => {
                 write!(f, "Use 'evaluate' to evaluate an equation")
+            }
+            EvaluationError::FactorialDomain => {
+                write!(f, "Factorial is only defined for integers from 0 to 170")
             }
         }
     }
@@ -102,6 +106,9 @@ pub fn evaluate(arena: &[Node], idx: u32, vars: &VariableBank) -> Result<f64, Ev
             evaluate(arena, *n, vars)?,
             evaluate(arena, *x, vars)?,
         )),
+        Node::Factorial(a) => {
+            factorial(evaluate(arena, *a, vars)?).ok_or(EvaluationError::FactorialDomain)
+        }
     }
 }
 
@@ -126,6 +133,20 @@ pub(crate) fn nth_root(n: f64, x: f64) -> f64 {
         };
     }
     x.powf(1.0 / n)
+}
+
+/// n! for integers 0..=170. Returns `None` for negatives, non-integers, NaN,
+/// and anything above 170 (which overflows f64). Exact up to 22!, then
+/// accurate to within a few ulps.
+pub(crate) fn factorial(x: f64) -> Option<f64> {
+    if x < 0.0 || x.fract() != 0.0 || x > 170.0 {
+        return None;
+    }
+    let mut acc = 1.0;
+    for i in 2..=(x as u32) {
+        acc *= i as f64;
+    }
+    Some(acc)
 }
 
 /// Attempts to interpret the expression at `root` as a simple variable assignment of the
@@ -329,6 +350,15 @@ mod tests {
     use crate::lexer::Tokenizer;
     use crate::parser::Parser;
     use crate::variables::{VARIABLE_LIMIT, VariableBank};
+
+    fn try_eval(src: &str) -> Result<f64, EvaluationError> {
+        let mut tokens = Vec::new();
+        let mut arena = Vec::new();
+        let vars = VariableBank::new();
+        Tokenizer::new(src).tokenize(&mut tokens).unwrap();
+        let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
+        evaluate(&arena, root, &vars)
+    }
 
     fn parse_and_eval(src: &str) -> f64 {
         let mut tokens = Vec::new();
@@ -543,5 +573,23 @@ mod tests {
         assert!((parse_and_eval("cbrt(27)") - 3.0).abs() < 1e-10);
         assert!((parse_and_eval("cbrt(-8)") + 2.0).abs() < 1e-10);
         assert!(parse_and_eval("root_4(-16)").is_nan());
+    }
+    #[test]
+    fn test_factorial() {
+        assert_eq!(parse_and_eval("0!"), 1.0);
+        assert_eq!(parse_and_eval("1!"), 1.0);
+        assert_eq!(parse_and_eval("5!"), 120.0);
+        assert_eq!(parse_and_eval("(2+3)!"), 120.0);
+        assert_eq!(parse_and_eval("3!!"), 720.0);
+        assert_eq!(parse_and_eval("-3!"), -6.0);
+        assert!((parse_and_eval("2^3!") - 64.0).abs() < 1e-10);
+        assert!(parse_and_eval("170!").is_finite());
+    }
+
+    #[test]
+    fn test_factorial_domain_errors() {
+        assert!(try_eval("(-1)!").is_err()); // note: -1! is -(1!) = -1, which is valid
+        assert!(try_eval("2.5!").is_err());
+        assert!(try_eval("171!").is_err());
     }
 }
