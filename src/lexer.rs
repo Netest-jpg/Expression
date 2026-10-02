@@ -531,6 +531,7 @@ impl<'src> Tokenizer<'src> {
         if !digit_seen {
             return Err(no_digit_error());
         }
+        self.read_exponent();
         Ok(Token::Number {
             start,
             end: self.pos as u32,
@@ -563,6 +564,27 @@ impl<'src> Tokenizer<'src> {
             end: self.pos as u32,
             hash,
         }
+    }
+
+    /// Consumes an exponent suffix (`E`, optional sign, one or more digits) if one is present.
+    /// Leaves `self.pos` untouched when `E` isn't followed by a valid exponent, so `2Ex`
+    /// still lexes as `2 * Ex`.
+    #[inline(always)]
+    fn read_exponent(&mut self) {
+        if self.current() != Some(b'E') {
+            return;
+        }
+        let mut i = self.pos + 1;
+        if matches!(self.src.get(i).copied(), Some(b'+' | b'-')) {
+            i += 1;
+        }
+        if !self.src.get(i).is_some_and(|b| b.is_ascii_digit()) {
+            return;
+        }
+        while self.src.get(i).is_some_and(|b| b.is_ascii_digit()) {
+            i += 1;
+        }
+        self.pos = i;
     }
 }
 
@@ -788,5 +810,30 @@ mod tests {
         // Number, Factorial, EndOfFile
         assert_eq!(tokens.len(), 3);
         assert_eq!(tokens[1], Token::Factorial);
+    }
+
+    #[test]
+    fn test_scientific_notation_tokens() {
+        // one Number token spanning the whole literal
+        let (tokens, _) = tok("2E3");
+        assert_eq!(tokens.len(), 2); // Number, EndOfFile
+        assert_eq!(tokens[0], Token::Number { start: 0, end: 3 });
+
+        let (tokens, _) = tok("1.5E-3");
+        assert_eq!(tokens[0], Token::Number { start: 0, end: 6 });
+
+        let (tokens, _) = tok("2E+3");
+        assert_eq!(tokens[0], Token::Number { start: 0, end: 4 });
+    }
+
+    #[test]
+    fn test_e_without_digits_is_not_an_exponent() {
+        let (tokens, _) = tok("2E");
+        assert!(matches!(tokens[1], Token::Multiply));
+        let (tokens, _) = tok("2Ex");
+        assert!(matches!(tokens[1], Token::Multiply));
+        // lowercase e is never an exponent marker
+        let (tokens, _) = tok("2e3");
+        assert!(matches!(tokens[1], Token::Multiply));
     }
 }

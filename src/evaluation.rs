@@ -592,4 +592,16 @@ mod tests {
         assert!(try_eval("2.5!").is_err());
         assert!(try_eval("171!").is_err());
     }
+
+    #[test]
+    fn test_scientific_notation() {
+        assert!((parse_and_eval("2E3") - 2000.0).abs() < 1e-9);
+        assert!((parse_and_eval("1.5E3") - 1500.0).abs() < 1e-9);
+        assert!((parse_and_eval("2E-3") - 0.002).abs() < 1e-15);
+        assert!((parse_and_eval("2E+3") - 2000.0).abs() < 1e-9);
+        assert!((parse_and_eval(".5E1") - 5.0).abs() < 1e-12);
+        assert!((parse_and_eval("1E3+1") - 1001.0).abs() < 1e-9);
+        // Euler's constant is untouched
+        assert!((parse_and_eval("2e") - 2.0 * std::f64::consts::E).abs() < 1e-12);
+    }
 }

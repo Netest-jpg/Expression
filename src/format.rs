@@ -55,7 +55,16 @@ pub fn write_value<W: Write>(out: &mut W, value: f64) -> std::io::Result<()> {
         out.write_all((value as i64).format_into(&mut buf).as_bytes())
     } else {
         let mut buf = zmij::Buffer::new();
-        out.write_all(buf.format(value).as_bytes())
+        let s = buf.format(value);
+        // print the exponent marker as `E` so output can be pasted back as input
+        match s.split_once('e') {
+            Some((mantissa, exponent)) => {
+                out.write_all(mantissa.as_bytes())?;
+                out.write_all(b"E")?;
+                out.write_all(exponent.as_bytes())
+            }
+            None => out.write_all(s.as_bytes()),
+        }
     }
 }
 
