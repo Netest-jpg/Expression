@@ -4,7 +4,7 @@ use std::io::Write;
 
 #[rustfmt::skip]
 pub fn write_tokens<W: Write>(out: &mut W, tokens: &[Token], src: &str, verbose: bool) -> std::io::Result<()> {
-    write!(out, "Tokens:")?;
+    write!(out, "  Tokens:")?;
     for token in tokens {
         match token {
             Token::EndOfFile => {}

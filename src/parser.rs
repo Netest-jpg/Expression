@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use crate::angles::AngleMode;
 use crate::lexer::{
     BP_UNARY, KW_ACOS, KW_ACOSH, KW_ACOT, KW_ACOTH, KW_ACSC, KW_ACSCH, KW_ASEC, KW_ASECH, KW_ASIN,
@@ -181,6 +180,12 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 let raw = &self.src[start as usize..end as usize];
                 let value = fast_float::parse::<f64, &str>(raw)
                     .map_err(|e| invalid_number_error(raw, &e))?;
+                if !value.is_finite() {
+                    return Err(number_out_of_range(raw));
+                }
+                if value == 0.0 && has_nonzero_mantissa(raw) {
+                    return Err(number_out_of_range(raw));
+                }
                 Ok(self.push_node(Node::Number(value)))
             }
 
@@ -484,11 +489,29 @@ fn is_forward_trig(hash: u64) -> bool {
     matches!(hash, KW_SIN | KW_COS | KW_TAN | KW_SEC | KW_CSC | KW_COT)
 }
 
+/// True if the literal's mantissa contains a nonzero digit, so a parsed value of
+/// exactly 0 means the number underflowed (as in `1E-999`) and wasn't written as zero.
+fn has_nonzero_mantissa(raw: &str) -> bool {
+    raw.bytes()
+        .take_while(|&b| b != b'E')
+        .any(|b| (b'1'..=b'9').contains(&b))
+}
+
 // Error Handles-----------------------------------------------------------
 #[cold]
 #[inline(never)]
 fn invalid_number_error(raw: &str, e: &impl std::fmt::Display) -> String {
     format!("Invalid number '{}': {}", raw, e)
+}
+
+#[cold]
+#[inline(never)]
+fn number_out_of_range(raw: &str) -> String {
+    format!(
+        "Number out of range: '{raw}'. Non-zero values must range from ±{:.16E} to ±{:E}",
+        f64::from_bits(1),
+        f64::MAX
+    )
 }
 
 #[cold]
@@ -832,5 +855,20 @@ mod tests {
     fn test_factorial_rejections() {
         assert!(try_parse("!3").is_err()); // nothing to apply to
         assert!(try_parse("3! 4").is_err()); // trailing token
+    }
+
+    #[test]
+    fn test_number_out_of_range() {
+        assert!(try_parse("1E999").is_err());
+        assert!(try_parse("1E-999").is_err());
+        assert!(try_parse("0.5E-400").is_err());
+    }
+
+    #[test]
+    fn test_zero_literals_still_fine() {
+        assert!(try_parse("0").is_ok());
+        assert!(try_parse("0.000").is_ok());
+        assert!(try_parse("0E-999").is_ok());
+        assert!(try_parse("1E-320").is_ok()); // tiny but still nonzero
     }
 }

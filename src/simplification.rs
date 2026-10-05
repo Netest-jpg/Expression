@@ -1,5 +1,5 @@
-#![allow(dead_code)]
 use crate::parser::Node;
+
 /// Recursively simplifies the expression subtree rooted at `root`: applies constant folding
 /// and algebraic identities from bottom-up, and returns the arena index of the result.
 ///
@@ -35,8 +35,10 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
         Node::Add(a, b) => {
             let a = simplify(arena, a);
             let b = simplify(arena, b);
-            if let (Some(x), Some(y)) = (as_number(arena, a), as_number(arena, b)) {
-                return push_node(arena, Node::Number(x + y)); // 2 + 3 -> 5
+            if let (Some(x), Some(y)) = (as_number(arena, a), as_number(arena, b))
+                && let Some(i) = fold(arena, x + y)
+            {
+                return i;
             }
             if is_zero(arena, a) {
                 return b; // 0 + x -> x
@@ -50,8 +52,10 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
         Node::Sub(a, b) => {
             let a = simplify(arena, a);
             let b = simplify(arena, b);
-            if let (Some(x), Some(y)) = (as_number(arena, a), as_number(arena, b)) {
-                return push_node(arena, Node::Number(x - y)); // 3 - 2 -> 1
+            if let (Some(x), Some(y)) = (as_number(arena, a), as_number(arena, b))
+                && let Some(i) = fold(arena, x - y)
+            {
+                return i;
             }
             if is_zero(arena, b) {
                 return a; // x - 0 -> x
@@ -62,8 +66,10 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
         Node::Mul(a, b) => {
             let a = simplify(arena, a);
             let b = simplify(arena, b);
-            if let (Some(x), Some(y)) = (as_number(arena, a), as_number(arena, b)) {
-                return push_node(arena, Node::Number(x * y)); // 3 * 5 -> 15
+            if let (Some(x), Some(y)) = (as_number(arena, a), as_number(arena, b))
+                && let Some(i) = fold(arena, x * y)
+            {
+                return i;
             }
             if is_zero(arena, a) || is_zero(arena, b) {
                 return push_node(arena, Node::Number(0.0)); // a * 0 -> 0 || 0 * b -> 0
@@ -80,8 +86,11 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
         Node::Div(a, b) => {
             let a = simplify(arena, a);
             let b = simplify(arena, b);
-            if let (Some(x), Some(y)) = (as_number(arena, a), as_number(arena, b)) && y != 0.0 {
-                return push_node(arena, Node::Number(x / y)); // 15 / 5 -> 3
+            if let (Some(x), Some(y)) = (as_number(arena, a), as_number(arena, b))
+                && y != 0.0
+                && let Some(i) = fold(arena, x / y)
+            {
+                return i;
             }
             if is_one(arena, b) {
                 return a; // x / 1 -> x
@@ -94,8 +103,10 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
             let base = simplify(arena, base);
             let exponent = simplify(arena, exponent);
 
-            if let (Some(x), Some(y)) = (as_number(arena, base), as_number(arena, exponent)) {
-                return push_node(arena, Node::Number(x.powf(y))); // 2^2 -> 4
+            if let (Some(x), Some(y)) = (as_number(arena, base), as_number(arena, exponent))
+                && let Some(i) = fold(arena, x.powf(y))
+            {
+                return i;
             }
             if is_zero(arena, exponent) {
                 return push_node(arena, Node::Number(1.0)); // x^0 -> 1
@@ -163,13 +174,15 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
         Node::Sinh(a) => simplify_unary(arena, a, Node::Sinh, f64::sinh),
         Node::Cosh(a) => simplify_unary(arena, a, Node::Cosh, f64::cosh),
         Node::Tanh(a) => simplify_unary(arena, a, Node::Tanh, f64::tanh),
+
         Node::Sech(a) => simplify_unary(arena, a, Node::Sech, |v| 1.0 / v.cosh()),
         Node::Csch(a) => simplify_unary(arena, a, Node::Csch, |v| 1.0 / v.sinh()),
-        Node::Coth(a) => simplify_unary(arena, a, Node::Coth, |v| v.cosh() / v.sinh()),
+        Node::Coth(a) => simplify_unary(arena, a, Node::Coth, |v| 1.0 / v.tanh()),
 
         Node::Asinh(a) => simplify_unary(arena, a, Node::Asinh, f64::asinh),
         Node::Acosh(a) => simplify_unary(arena, a, Node::Acosh, f64::acosh),
         Node::Atanh(a) => simplify_unary(arena, a, Node::Atanh, f64::atanh),
+
         Node::Asech(a) => simplify_unary(arena, a, Node::Asech, |v| (1.0 / v).acosh()),
         Node::Acsch(a) => simplify_unary(arena, a, Node::Acsch, |v| (1.0 / v).asinh()),
         Node::Acoth(a) => simplify_unary(arena, a, Node::Acoth, |v| (1.0 / v).atanh()),
@@ -194,7 +207,9 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
                     if arg == base {
                         return push_node(arena, Node::Number(1.0)); // log_2(2) -> 1
                     }
-                    return push_node(arena, Node::Number(arg.log(base))); // log_2(8) -> 3
+                    if let Some(i) = fold(arena, arg.log(base)) {
+                        return i; // log_2(8) -> 3
+                    }
                 }
 
             push_node(arena, Node::LogBase(base, arg))
@@ -210,8 +225,8 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
             }
             if let (Some(nv), Some(xv)) = (as_number(arena, n), as_number(arena, x)) {
                 let r = crate::evaluation::nth_root(nv, xv);
-                if !r.is_nan() {
-                    return push_node(arena, Node::Number(r)); // root_3(27) -> 3
+                if let Some(i) = fold(arena, r) {
+                    return i; // root_3(27) -> 3
                 }
             }
             push_node(arena, Node::Root(n, x))
@@ -229,6 +244,9 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
     }
 }
 
+/// Appends `node` to `arena` and returns its index. Never overwrites existing nodes.
+///
+/// Indices are `u32`; pushing more than `u32::MAX` nodes will silently wrap.
 #[inline(always)]
 fn push_node(arena: &mut Vec<Node>, node: Node) -> u32 {
     let idx = arena.len() as u32;
@@ -246,13 +264,23 @@ fn as_number(arena: &[Node], idx: u32) -> Option<f64> {
     }
 }
 
+/// Pushes `Number(v)` and returns its index, but only if `v` is finite. NaN and ±inf
+/// (domain errors, overflow) return `None`, so the caller leaves the expression unfolded
+/// and `evaluate` can report the real error.
+#[inline(always)]
+fn fold(arena: &mut Vec<Node>, v: f64) -> Option<u32> {
+    v.is_finite().then(|| push_node(arena, Node::Number(v)))
+}
+
 /// Shared helper for all unary function nodes: simplify the argument, constant-fold via `f` if it resolved to a Number, otherwise rebuild the node (via `ctor`) pointing at the simplified argument.
 #[rustfmt::skip]
 #[inline(always)]
 fn simplify_unary(arena: &mut Vec<Node>, arg: u32, ctor: fn(u32) -> Node, f: fn(f64) -> f64) -> u32 {
     let arg = simplify(arena, arg);
-    if let Some(v) = as_number(arena, arg) {
-        return push_node(arena, Node::Number(f(v)));
+    if let Some(v) = as_number(arena, arg)
+        && let Some(i) = fold(arena, f(v))
+    {
+        return i;
     }
     push_node(arena, ctor(arg))
 }
@@ -269,13 +297,17 @@ fn simplify_trig(
     let arg = simplify(arena, arg); // simplifies the inner expression, keeps the wrapper
     match arena[arg as usize] {
         Node::Deg(inner) => {
-            if let Some(v) = as_number(arena, inner) {
-                return push_node(arena, Node::Number(f_deg(v)));
+            if let Some(v) = as_number(arena, inner)
+                && let Some(i) = fold(arena, f_deg(v))
+            {
+                return i;
             }
         }
         Node::Rad(inner) => {
-            if let Some(v) = as_number(arena, inner) {
-                return push_node(arena, Node::Number(f_rad(v)));
+            if let Some(v) = as_number(arena, inner)
+                && let Some(i) = fold(arena, f_rad(v))
+            {
+                return i;
             }
         }
         _ => {}
@@ -530,5 +562,25 @@ mod tests {
 
         let (arena, root) = run("(-1)!"); // invalid domain, left unfolded
         assert!(matches!(arena[root as usize], Node::Factorial(_)));
+    }
+
+    #[test]
+    fn test_invalid_folds_left_alone() {
+        for src in [
+            "sqrt(-1)",
+            "ln(0)",
+            "log_2(0)",
+            "tan(90)",
+            "1E300*1E300",
+            "2^2000",
+            "(-8)^0.5",
+            "root_2(-4)",
+        ] {
+            let (arena, root) = run(src);
+            assert!(
+                !matches!(arena[root as usize], Node::Number(_)),
+                "{src} must not fold to a number"
+            );
+        }
     }
 }

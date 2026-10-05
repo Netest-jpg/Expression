@@ -49,6 +49,7 @@ pub fn tan_deg(x: f64) -> f64 {
         r.to_radians().tan()
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;

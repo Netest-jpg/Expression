@@ -404,7 +404,7 @@ impl<'src> Tokenizer<'src> {
                     // implicit multiply: "2x" → Number Asterisk Variable
                     // doesn't perform for "Deg" and "Rad"
                     let implicit = self.current().is_some_and(is_variable)
-                        && !matches!(self.peek_variable_(), KW_DEG | KW_RAD);
+                        && !matches!(self.peek_variable_hash(), KW_DEG | KW_RAD);
                     tokens.push(token);
                     if implicit {
                         tokens.push(Token::Multiply);
@@ -485,7 +485,7 @@ impl<'src> Tokenizer<'src> {
 
     /// Hashes the variable starting at `self.pos` without consuming it.
     #[inline(always)]
-    fn peek_variable_(&self) -> u64 {
+    fn peek_variable_hash(&self) -> u64 {
         let mut hash = FNV_OFFSET;
         let mut i = self.pos;
         while let Some(&byte) = self.src.get(i) {
@@ -607,7 +607,7 @@ fn is_variable(c: u8) -> bool {
     unsafe { (*VARIABLE.get_unchecked(c as usize / 8) >> (c % 8)) & 1 != 0 }
 }
 
-// Error handles ---------------------------------------------------------------
+// Error handles ----------------------------------------------------------
 #[cold]
 #[inline(never)]
 fn invalid_second_dot_error(src: &[u8], start: u32, pos: usize) -> String {
@@ -629,7 +629,8 @@ fn no_digit_error() -> String {
 fn unknown_character_error(character: char) -> String {
     format!("Unknown character: '{}'", character)
 }
-//----------------------------------------------------------------------------
+//-----------------------------------------------------
+
 #[cfg(test)]
 mod tests {
     use super::*;

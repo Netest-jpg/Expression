@@ -6,17 +6,31 @@ pub enum EvaluationError {
     UnboundVariable,
     IsEquation,
     FactorialDomain,
+    DivisionByZero,
+    Overflow,
+    Domain(&'static str),
 }
 
 impl std::fmt::Display for EvaluationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            EvaluationError::UnboundVariable => write!(f, "Unbound variable"),
+            EvaluationError::UnboundVariable => {
+                write!(f, "Unbound variable")
+            }
             EvaluationError::IsEquation => {
                 write!(f, "Use 'evaluate' to evaluate an equation")
             }
             EvaluationError::FactorialDomain => {
                 write!(f, "Factorial is only defined for integers from 0 to 170")
+            }
+            EvaluationError::DivisionByZero => {
+                write!(f, "Division by zero")
+            }
+            EvaluationError::Overflow => {
+                write!(f, "Result is too large")
+            }
+            EvaluationError::Domain(msg) => {
+                write!(f, "{msg}")
             }
         }
     }
@@ -27,6 +41,7 @@ impl std::error::Error for EvaluationError {}
 /// Evaluates an expression if all variables are in-bound and returns the result as `f64`.
 ///
 /// Returns `Err` via `EvaluationMessages` if there are any unbound variables or `Node::Equation`.
+#[rustfmt::skip]
 pub fn evaluate(arena: &[Node], idx: u32, vars: &VariableBank) -> Result<f64, EvaluationError> {
     match &arena[idx as usize] {
         Node::Number(v) => Ok(*v),
@@ -37,11 +52,32 @@ pub fn evaluate(arena: &[Node], idx: u32, vars: &VariableBank) -> Result<f64, Ev
         Node::Equation(_, _) => Err(EvaluationError::IsEquation),
 
         Node::Neg(a) => Ok(-evaluate(arena, *a, vars)?),
-        Node::Add(a, b) => Ok(evaluate(arena, *a, vars)? + evaluate(arena, *b, vars)?),
-        Node::Sub(a, b) => Ok(evaluate(arena, *a, vars)? - evaluate(arena, *b, vars)?),
-        Node::Mul(a, b) => Ok(evaluate(arena, *a, vars)? * evaluate(arena, *b, vars)?),
-        Node::Div(a, b) => Ok(evaluate(arena, *a, vars)? / evaluate(arena, *b, vars)?),
-        Node::Pow(a, b) => Ok(evaluate(arena, *a, vars)?.powf(evaluate(arena, *b, vars)?)),
+
+        Node::Add(a, b) => overflow(evaluate(arena, *a, vars)? + evaluate(arena, *b, vars)?),
+        Node::Sub(a, b) => overflow(evaluate(arena, *a, vars)? - evaluate(arena, *b, vars)?),
+        Node::Mul(a, b) => overflow(evaluate(arena, *a, vars)? * evaluate(arena, *b, vars)?),
+        Node::Div(a, b) => {
+            let x = evaluate(arena, *a, vars)?;
+            let y = evaluate(arena, *b, vars)?;
+            if y == 0.0 {
+                return Err(EvaluationError::DivisionByZero); // covers 0/0 too
+            }
+            overflow(x / y)
+        }
+        Node::Pow(a, b) => {
+            let x = evaluate(arena, *a, vars)?;
+            let y = evaluate(arena, *b, vars)?;
+            let r = x.powf(y);
+            if r.is_nan() {
+                Err(EvaluationError::Domain(
+                    "Negative base with a non-integer exponent",
+                ))
+            } else if r.is_infinite() && x == 0.0 {
+                Err(EvaluationError::DivisionByZero) // 0 ^ negative
+            } else {
+                overflow(r)
+            }
+        }
 
         Node::Deg(a) => Ok(evaluate(arena, *a, vars)?.to_radians()),
         Node::Rad(a) => Ok(evaluate(arena, *a, vars)?),
@@ -71,41 +107,60 @@ pub fn evaluate(arena: &[Node], idx: u32, vars: &VariableBank) -> Result<f64, Ev
             |v| crate::angles::cos_deg(v) / crate::angles::sin_deg(v),
         ),
 
-        Node::Asin(a) => Ok(evaluate(arena, *a, vars)?.asin()),
-        Node::Acos(a) => Ok(evaluate(arena, *a, vars)?.acos()),
+        Node::Asin(a) => domain(evaluate(arena, *a, vars)?.asin(), "asin needs |x| <= 1"),
+        Node::Acos(a) => domain(evaluate(arena, *a, vars)?.acos(), "acos needs |x| <= 1"),
         Node::Atan(a) => Ok(evaluate(arena, *a, vars)?.atan()),
-        Node::Asec(a) => Ok((1.0 / evaluate(arena, *a, vars)?).acos()),
-        Node::Acsc(a) => Ok((1.0 / evaluate(arena, *a, vars)?).asin()),
+
+        #[rustfmt::skip]
+        Node::Asec(a) => domain((1.0 / evaluate(arena, *a, vars)?).acos(),"asec needs |x| >= 1"),
+        #[rustfmt::skip]
+        Node::Acsc(a) => domain((1.0 / evaluate(arena, *a, vars)?).asin(),"acsc needs |x| >= 1"),
         Node::Acot(a) => Ok((1.0 / evaluate(arena, *a, vars)?).atan()),
 
-        Node::Sinh(a) => Ok(evaluate(arena, *a, vars)?.sinh()),
-        Node::Cosh(a) => Ok(evaluate(arena, *a, vars)?.cosh()),
+        Node::Sinh(a) => overflow(evaluate(arena, *a, vars)?.sinh()),
+        Node::Cosh(a) => overflow(evaluate(arena, *a, vars)?.cosh()),
         Node::Tanh(a) => Ok(evaluate(arena, *a, vars)?.tanh()),
+
         Node::Sech(a) => Ok(1.0 / evaluate(arena, *a, vars)?.cosh()),
-        Node::Csch(a) => Ok(1.0 / evaluate(arena, *a, vars)?.sinh()),
-        Node::Coth(a) => {
-            let v = evaluate(arena, *a, vars)?;
-            Ok(v.cosh() / v.sinh())
-        }
+        Node::Csch(a) => domain(1.0 / evaluate(arena, *a, vars)?.sinh(), "csch is undefined at 0"),
+        Node::Coth(a) => domain(1.0 / evaluate(arena, *a, vars)?.tanh(), "coth is undefined at 0"),
 
         Node::Asinh(a) => Ok(evaluate(arena, *a, vars)?.asinh()),
-        Node::Acosh(a) => Ok(evaluate(arena, *a, vars)?.acosh()),
-        Node::Atanh(a) => Ok(evaluate(arena, *a, vars)?.atanh()),
-        Node::Asech(a) => Ok((1.0 / evaluate(arena, *a, vars)?).acosh()),
-        Node::Acsch(a) => Ok((1.0 / evaluate(arena, *a, vars)?).asinh()),
-        Node::Acoth(a) => Ok((1.0 / evaluate(arena, *a, vars)?).atanh()),
+        Node::Acosh(a) => domain(evaluate(arena, *a, vars)?.acosh(), "acosh needs x >= 1"),
+        Node::Atanh(a) => domain(evaluate(arena, *a, vars)?.atanh(), "atanh needs |x| < 1"),
 
-        Node::Ln(a) => Ok(evaluate(arena, *a, vars)?.ln()),
-        Node::Log(a) => Ok(evaluate(arena, *a, vars)?.log10()),
+        Node::Asech(a) => domain((1.0 / evaluate(arena, *a, vars)?).acosh(),"asech needs 0 < x <= 1"),
+        Node::Acsch(a) => domain((1.0 / evaluate(arena, *a, vars)?).asinh(),"acsch is undefined at 0"),
+        Node::Acoth(a) => domain((1.0 / evaluate(arena, *a, vars)?).atanh(),"acoth needs |x| > 1"),
+
+        Node::Ln(a) => domain(evaluate(arena, *a, vars)?.ln(), "ln needs x > 0"),
+        Node::Log(a) => domain(evaluate(arena, *a, vars)?.log10(), "log needs x > 0"),
         Node::LogBase(base, arg) => {
-            Ok(evaluate(arena, *arg, vars)?.log(evaluate(arena, *base, vars)?))
+            let b = evaluate(arena, *base, vars)?;
+            let x = evaluate(arena, *arg, vars)?;
+            // Checked explicitly: log_0(5) would otherwise come out as a finite -0
+            if b <= 0.0 || b == 1.0 || x <= 0.0 {
+                return Err(EvaluationError::Domain("log_b(x) needs b > 0, b != 1 and x > 0"));
+            }
+            Ok(x.log(b))
         }
-        Node::Sqrt(a) => Ok(evaluate(arena, *a, vars)?.sqrt()),
+
+        Node::Sqrt(a) => domain(evaluate(arena, *a, vars)?.sqrt(), "sqrt needs x >= 0"),
         Node::Cbrt(a) => Ok(evaluate(arena, *a, vars)?.cbrt()),
-        Node::Root(n, x) => Ok(nth_root(
-            evaluate(arena, *n, vars)?,
-            evaluate(arena, *x, vars)?,
-        )),
+        Node::Root(n, x) => {
+            let n = evaluate(arena, *n, vars)?;
+            let x = evaluate(arena, *x, vars)?;
+            if n == 0.0 {
+                return Err(EvaluationError::Domain("Root index cannot be zero"));
+            }
+            let r = nth_root(n, x);
+            if r.is_nan() {
+                Err(EvaluationError::Domain("Root of a negative number needs an odd integer index"))
+            } else {
+                overflow(r)
+            }
+        }
+
         Node::Factorial(a) => {
             factorial(evaluate(arena, *a, vars)?).ok_or(EvaluationError::FactorialDomain)
         }
@@ -186,10 +241,33 @@ fn eval_angle(
     f_rad: fn(f64) -> f64,
     f_deg: fn(f64) -> f64,
 ) -> Result<f64, EvaluationError> {
-    match &arena[idx as usize] {
-        Node::Deg(inner) => Ok(f_deg(evaluate(arena, *inner, vars)?)),
-        Node::Rad(inner) => Ok(f_rad(evaluate(arena, *inner, vars)?)),
-        _ => Ok(f_rad(evaluate(arena, idx, vars)?)),
+    let v = match &arena[idx as usize] {
+        Node::Deg(inner) => f_deg(evaluate(arena, *inner, vars)?),
+        Node::Rad(inner) => f_rad(evaluate(arena, *inner, vars)?),
+        _ => f_rad(evaluate(arena, idx, vars)?),
+    };
+    domain(v, "Trig function is undefined as this angle")
+}
+
+/// `v` if finite, otherwise a domain error carrying `msg`. For functions where NaN or
+/// ±inf means "undefined here" (sqrt(-1), ln(0), tan(90), ...).
+#[inline(always)]
+fn domain(v: f64, msg: &'static str) -> Result<f64, EvaluationError> {
+    if v.is_finite() {
+        Ok(v)
+    } else {
+        Err(EvaluationError::Domain(msg))
+    }
+}
+
+/// `v` if finite, otherwise `Overflow`. For operations on finite inputs where overflow
+/// is the only way to go wrong.
+#[inline(always)]
+fn overflow(v: f64) -> Result<f64, EvaluationError> {
+    if v.is_finite() {
+        Ok(v)
+    } else {
+        Err(EvaluationError::Overflow)
     }
 }
 
@@ -367,6 +445,10 @@ mod tests {
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
         evaluate(&arena, root, &vars).unwrap()
+    }
+
+    fn eval_err(src: &str) -> String {
+        try_eval(src).unwrap_err().to_string()
     }
 
     #[test]
@@ -572,7 +654,7 @@ mod tests {
         assert!((parse_and_eval("root_4(16)") - 2.0).abs() < 1e-10);
         assert!((parse_and_eval("cbrt(27)") - 3.0).abs() < 1e-10);
         assert!((parse_and_eval("cbrt(-8)") + 2.0).abs() < 1e-10);
-        assert!(parse_and_eval("root_4(-16)").is_nan());
+        assert!(try_eval("root_4(-16)").is_err());
     }
     #[test]
     fn test_factorial() {
@@ -603,5 +685,56 @@ mod tests {
         assert!((parse_and_eval("1E3+1") - 1001.0).abs() < 1e-9);
         // Euler's constant is untouched
         assert!((parse_and_eval("2e") - 2.0 * std::f64::consts::E).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_division_by_zero() {
+        assert_eq!(eval_err("1/0"), "Division by zero");
+        assert_eq!(eval_err("0/0"), "Division by zero");
+        assert_eq!(eval_err("0^-1"), "Division by zero");
+    }
+
+    #[test]
+    fn test_domain_errors() {
+        for src in [
+            "sqrt(-1)",
+            "ln(0)",
+            "ln(-1)",
+            "log(0)",
+            "log_2(0)",
+            "log_1(5)",
+            "log_0(5)",
+            "asin(2)",
+            "acos(-2)",
+            "acosh(0.5)",
+            "atanh(1)",
+            "asec(0.5)",
+            "root_2(-4)",
+            "root_0(5)",
+            "(-8)^0.5",
+            "tan(90)",
+            "sec(90)",
+            "csc(0)",
+            "cot(0)",
+            "csch(0)",
+            "coth(0)",
+        ] {
+            assert!(try_eval(src).is_err(), "{src} should fail");
+        }
+    }
+
+    #[test]
+    fn test_overflow_errors() {
+        assert_eq!(eval_err("10^400"), "Result is too large");
+        assert_eq!(eval_err("1E300*1E300"), "Result is too large");
+        assert_eq!(eval_err("sinh(1000)"), "Result is too large");
+    }
+
+    #[test]
+    fn test_valid_edge_cases_still_work() {
+        assert_eq!(parse_and_eval("0^0"), 1.0);
+        assert_eq!(parse_and_eval("0/5"), 0.0);
+        assert_eq!(parse_and_eval("tan(45)"), 1.0);
+        assert!((parse_and_eval("coth(1000)") - 1.0).abs() < 1e-12);
     }
 }

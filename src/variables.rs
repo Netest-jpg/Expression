@@ -342,6 +342,7 @@ fn collect_vars_inner(arena: &[Node], idx: u32, out: &mut VariableList) {
         }
     }
 }
+
 // Error Handles--------------------------------------------------------------------
 #[cold]
 #[inline(never)]
