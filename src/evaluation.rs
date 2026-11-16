@@ -1,3 +1,4 @@
+use crate::angles::{cos_deg, sin_deg, tan_deg};
 use crate::parser::Node;
 use crate::variables::{VARIABLE_LIMIT, VariableBank, collect_variables};
 
@@ -82,29 +83,29 @@ pub fn evaluate(arena: &[Node], idx: u32, vars: &VariableBank) -> Result<f64, Ev
         Node::Deg(a) => Ok(evaluate(arena, *a, vars)?.to_radians()),
         Node::Rad(a) => Ok(evaluate(arena, *a, vars)?),
 
-        Node::Sin(a) => eval_angle(arena, *a, vars, f64::sin, crate::angles::sin_deg),
-        Node::Cos(a) => eval_angle(arena, *a, vars, f64::cos, crate::angles::cos_deg),
-        Node::Tan(a) => eval_angle(arena, *a, vars, f64::tan, crate::angles::tan_deg),
+        Node::Sin(a) => eval_angle(arena, *a, vars, f64::sin, sin_deg),
+        Node::Cos(a) => eval_angle(arena, *a, vars, f64::cos, cos_deg),
+        Node::Tan(a) => eval_angle(arena, *a, vars, f64::tan, tan_deg),
         Node::Sec(a) => eval_angle(
             arena,
             *a,
             vars,
             |v| 1.0 / v.cos(),
-            |v| 1.0 / crate::angles::cos_deg(v),
+            |v| 1.0 / cos_deg(v),
         ),
         Node::Csc(a) => eval_angle(
             arena,
             *a,
             vars,
             |v| 1.0 / v.sin(),
-            |v| 1.0 / crate::angles::sin_deg(v),
+            |v| 1.0 / sin_deg(v),
         ),
         Node::Cot(a) => eval_angle(
             arena,
             *a,
             vars,
             |v| v.cos() / v.sin(),
-            |v| crate::angles::cos_deg(v) / crate::angles::sin_deg(v),
+            |v| cos_deg(v) / sin_deg(v),
         ),
 
         Node::Asin(a) => domain(evaluate(arena, *a, vars)?.asin(), "asin needs |x| <= 1"),
