@@ -1,18 +1,16 @@
 use ::expression::angles::AngleMode;
-use expression::evaluation::{
-    EvaluationError, EvaluationResult, evaluate, evaluate_or_solve, try_simple_assign,
-};
+use expression::evaluation::{EvaluationError, evaluate, evaluate_or_solve, try_assign};
 use expression::lexer::{Token, Tokenizer};
 use expression::parser::{Node, Parser};
 use expression::simplification::simplify;
-use expression::variables::{VariableBank, collect_variables};
+use expression::variables::VariableValues;
 use std::io::{BufRead, BufWriter, IsTerminal, Write};
 mod format;
-use format::{write_node_recursive, write_tokens, write_value};
+use format::{write_node_recursive, write_result, write_tokens, write_value};
 mod settings;
 use settings::Settings;
 mod pending;
-use pending::Pending;
+use pending::{Pending, store_pending};
 
 #[cfg(feature = "dhat-heap")]
 #[global_allocator]
@@ -31,7 +29,7 @@ fn main() {
     let mut line = String::with_capacity(64);
     let mut tokens: Vec<Token> = Vec::with_capacity(32);
     let mut arena: Vec<Node> = Vec::with_capacity(32);
-    let mut vars = VariableBank::new();
+    let mut vars = VariableValues::new();
     let mut pending: Option<Pending> = None;
     let mut pending_src = String::new();
 
@@ -52,9 +50,8 @@ fn main() {
     loop {
         if is_terminal {
             write!(out, "~ ").ok();
-            out.flush().ok();
         }
-
+        out.flush().ok();
         line.clear();
         match input.read_line(&mut line) {
             Ok(0) => break,
@@ -82,7 +79,6 @@ fn main() {
                 vars.clear();
                 pending = None;
                 writeln!(out, "(All variables and pending equation cleared)\n").ok();
-                out.flush().ok();
                 continue;
             }
             "angle" => {
@@ -96,8 +92,6 @@ fn main() {
                     settings.angle
                 )
                 .ok();
-                out.flush().ok();
-
                 continue;
             }
             "tokens" => {
@@ -108,72 +102,40 @@ fn main() {
                     ["off", "on"][settings.tokens as usize]
                 )
                 .ok();
-                out.flush().ok();
                 continue;
             }
             "evaluate" => {
                 match &pending {
                     None => {
                         eprintln!("Error: Nothing to evaluate. Enter an equation.");
+                        writeln!(out).ok();
                     }
                     Some(p) => match evaluate_or_solve(&p.arena, p.root, &vars, &p.src) {
-                        Err(e) => eprintln!("Error: {e}"),
-                        Ok(result) => match result {
-                            EvaluationResult::Value(v) => {
-                                write_value(&mut out, v).ok();
-                                writeln!(out).ok();
-                            }
-                            EvaluationResult::Verified { lhs, rhs } => {
-                                if (lhs - rhs).abs() < 1e-9 {
-                                    write_value(&mut out, lhs).ok();
-                                    write!(out, " = ").ok();
-                                    write_value(&mut out, rhs).ok();
-                                    writeln!(out, "  (LHS = RHS)").ok();
-                                } else {
-                                    write_value(&mut out, lhs).ok();
-                                    write!(out, " ≠ ").ok();
-                                    write_value(&mut out, rhs).ok();
-                                    writeln!(out, "  (LHS ≠ RHS)").ok();
-                                }
-                            }
-                            #[rustfmt::skip]
-                            EvaluationResult::Solved { name, values, count } => {
-                                if count == 2 && (values[0] + values[1]).abs() < 1e-9 {
-                                    write!(out, "{} = ±", name).ok();
-                                    write_value(&mut out, values[0].abs()).ok();
-                                    writeln!(out).ok();
-                                } else {
-                                        for value in values.iter().take(count as usize) {
-                                        write!(out, "{} = ", name).ok();
-                                        write_value(&mut out, *value).ok();
-                                        writeln!(out).ok();
-                                    }
-                                }
-                            },
-                        },
+                        Ok(result) => {
+                            write_result(&mut out, result).ok();
+                            writeln!(out).ok();
+                        }
+                        Err(e) => {
+                            eprintln!("Error: {e}");
+                            writeln!(out).ok();
+                        }
                     },
-                }
-                if is_terminal {
-                    writeln!(out).ok();
-                    out.flush().ok();
                 }
                 continue;
             }
             "simplify" => {
                 match &pending {
                     None => {
-                        eprintln!("Error: Nothing to simplify — enter an expression first.");
+                        eprintln!("Error: Nothing to simplify. Enter an expression.");
+                        writeln!(out).ok();
                     }
                     Some(p) => {
                         let mut work_arena = p.arena.clone();
                         let simplified_root = simplify(&mut work_arena, p.root);
                         write_node_recursive(&mut out, simplified_root, &work_arena, &p.src).ok();
                         writeln!(out).ok();
+                        writeln!(out).ok();
                     }
-                }
-                if is_terminal {
-                    writeln!(out).ok();
-                    out.flush().ok();
                 }
                 continue;
             }
@@ -183,7 +145,6 @@ fn main() {
         if let Err(e) = Tokenizer::new(expression).tokenize(&mut tokens) {
             eprintln!("Error: {e}");
             writeln!(out).ok();
-            out.flush().ok();
             continue;
         }
 
@@ -197,147 +158,91 @@ fn main() {
         arena.reserve(tokens.len());
 
         let root = match Parser::new(&tokens, expression, &mut arena)
-            .with_angle(settings.angle)
+            .set_angle(settings.angle)
             .parse()
         {
             Err(e) => {
                 eprintln!("Error: {e}");
                 writeln!(out).ok();
-                out.flush().ok();
                 continue;
             }
             Ok(root) => root,
         };
 
         match &arena[root as usize] {
-            Node::Equation(_, _) => {
-                match try_simple_assign(&arena, root, &mut vars) {
-                    Err(e) => {
-                        eprintln!("Error: {e}");
+            Node::Equation(_, _) => match try_assign(&arena, root, &mut vars) {
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    writeln!(out).ok();
+                }
+                Ok(Some((start, end, value))) => {
+                    let name = &expression[start as usize..end as usize];
+                    write!(out, "{} = ", name).ok();
+                    write_value(&mut out, value).ok();
+                    writeln!(out).ok();
+                    if is_terminal && let Some(p) = &pending {
+                        p.print_pending(&mut out, &vars);
                     }
-                    Ok(Some((start, end, value))) => {
-                        let name = &expression[start as usize..end as usize];
-                        write!(out, "{} = ", name).ok();
-                        write_value(&mut out, value).ok();
-                        writeln!(out).ok();
-                        if is_terminal && let Some(p) = &pending {
-                            p.print_status(&mut out, &vars);
+                }
+                Ok(None) => {
+                    if is_terminal && let Some(p) = &pending {
+                        writeln!(out, "(Replacing pending: '{}')", p.src).ok();
+                    }
+                    pending = Some(store_pending(
+                        pending.take(),
+                        &mut pending_src,
+                        &mut arena,
+                        expression,
+                        root,
+                    ));
+
+                    if is_terminal && let Some(p) = &pending {
+                        let free = p.unbound_variables(&vars);
+
+                        if free.is_empty() {
+                            writeln!(out, "(All variables bound. Type 'evaluate' to check)").ok();
+                        } else {
+                            let plural = if free.len() == 1 { "" } else { "s" };
+
+                            writeln!(out, "(Stored variable{plural}: {})", free.join(", ")).ok();
+                            writeln!(out, "Assign value{plural} then type 'evaluate'").ok();
                         }
                     }
-                    Ok(None) => {
+                }
+            },
+            _ => match evaluate(&arena, root, &vars) {
+                Ok(v) => {
+                    write_value(&mut out, v).ok();
+                    writeln!(out).ok();
+                }
+                Err(e) => match e {
+                    EvaluationError::UnboundVariable => {
                         if is_terminal && let Some(prev) = &pending {
-                            writeln!(out, "(replacing pending: \"{}\")", prev.src).ok();
+                            writeln!(out, "(Replacing pending: '{}')", prev.src).ok();
                         }
-                        let mut pending_arena = match pending.take() {
-                            Some(old) => {
-                                pending_src = old.src;
-                                old.arena
-                            }
-                            None => Vec::with_capacity(32),
-                        };
-                        std::mem::swap(&mut pending_arena, &mut arena);
-                        pending_src.clear();
-                        pending_src.push_str(expression);
-                        // Safety: pending_src is not accessed while pending is live because pending_src is only mutated here, before the new Pending is constructed, and reclaimed from Pending above.
-                        let src = std::mem::take(&mut pending_src);
-                        pending = Some(Pending {
-                            src,
-                            arena: pending_arena,
+                        pending = Some(store_pending(
+                            pending.take(),
+                            &mut pending_src,
+                            &mut arena,
+                            expression,
                             root,
-                        });
+                        ));
+                        if is_terminal && let Some(p) = &pending {
+                            let free = p.unbound_variables(&vars);
+                            let plural = if free.len() == 1 { "" } else { "s" };
 
-                        if is_terminal {
-                            let all_vars =
-                                collect_variables(pending.as_ref().unwrap().arena.as_slice(), root);
-                            let free: Vec<&str> = all_vars
-                                .iter()
-                                .filter(|(h, _, _)| vars.get(*h).is_none())
-                                .map(|(_, s, e)| &expression[*s as usize..*e as usize])
-                                .collect();
-                            if free.is_empty() {
-                                writeln!(out, "(all variables bound — type 'evaluate' to check)")
-                                    .ok();
-                            } else {
-                                writeln!(
-                                    out,
-                                    "(stored — free variable{}: {})",
-                                    if free.len() == 1 { "" } else { "s" },
-                                    free.join(", ")
-                                )
-                                .ok();
-                                writeln!(
-                                    out,
-                                    "assign value{} then type 'evaluate'",
-                                    if free.len() == 1 { "" } else { "s" }
-                                )
-                                .ok();
-                            }
+                            writeln!(out, "(Stored variable{plural}: {})", free.join(", ")).ok();
+                            writeln!(out, "Assign value{plural} then type 'evaluate'").ok();
                         }
                     }
-                }
-            }
-            _ => {
-                match evaluate(&arena, root, &vars) {
-                    Ok(v) => {
-                        write_value(&mut out, v).ok();
-                        writeln!(out).ok();
+                    other => {
+                        eprintln!("Error: {}", other);
                     }
-                    Err(e) => {
-                        match e {
-                            EvaluationError::UnboundVariable => {
-                                if is_terminal {
-                                    if let Some(prev) = &pending {
-                                        writeln!(out, "(replacing pending: \"{}\")", prev.src).ok();
-                                    }
-                                    let all_vars = collect_variables(&arena, root);
-                                    let free: Vec<&str> = all_vars
-                                        .iter()
-                                        .filter(|(h, _, _)| vars.get(*h).is_none())
-                                        .map(|(_, s, e)| &expression[*s as usize..*e as usize])
-                                        .collect();
-                                    writeln!(
-                                        out,
-                                        "(stored — free variable{}: {})",
-                                        if free.len() == 1 { "" } else { "s" },
-                                        free.join(", ")
-                                    )
-                                    .ok();
-                                    writeln!(
-                                        out,
-                                        "assign value{} then type 'evaluate'",
-                                        if free.len() == 1 { "" } else { "s" }
-                                    )
-                                    .ok();
-                                }
-
-                                let mut pending_arena = match pending.take() {
-                                    Some(old) => {
-                                        pending_src = old.src; // reclaim String buffer
-                                        old.arena
-                                    }
-                                    None => Vec::with_capacity(32),
-                                };
-                                std::mem::swap(&mut pending_arena, &mut arena);
-                                pending_src.clear();
-                                pending_src.push_str(expression); // reuse heap, no alloc if cap sufficient
-                                let src = std::mem::take(&mut pending_src);
-                                pending = Some(Pending {
-                                    src,
-                                    arena: pending_arena,
-                                    root,
-                                });
-                            }
-                            other => {
-                                eprintln!("Error: {}", other);
-                            }
-                        }
-                    }
-                }
-            }
+                },
+            },
         }
         if is_terminal {
             writeln!(out).ok();
-            out.flush().ok();
         }
     }
 }

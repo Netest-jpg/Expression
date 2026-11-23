@@ -20,7 +20,6 @@ const fn keyword_hash(bytes: &[u8]) -> u64 {
     hash
 }
 
-// common keyword hashes stored as constants instead of static because the hashs are in u64.
 pub const KW_LN: u64 = keyword_hash(b"ln");
 pub const KW_LOG: u64 = keyword_hash(b"log");
 
@@ -167,17 +166,8 @@ const fn build_byte_class_table() -> [ByteClass; 256] {
 
 #[derive(Clone, PartialEq)]
 pub enum Token {
-    /// Byte range in the source. Call `.raw(src)` when needed.
-    Number {
-        start: u32,
-        end: u32,
-    },
-    /// Byte range in the source. Call `.source_text(src)` when needed.
-    Variable {
-        start: u32,
-        end: u32,
-        hash: u64,
-    },
+    Number { start: u32, end: u32 },
+    Variable { start: u32, end: u32, hash: u64 },
     Plus,
     Minus,
     Multiply,
@@ -199,7 +189,7 @@ pub const BP_FACTORIAL: u8 = 40;
 
 impl Token {
     /// Returns the Left Binding Power (LBP) of a [`Token`]
-    #[inline(always)]
+    #[inline]
     pub fn lbp(&self) -> u8 {
         match self {
             Token::Equals => BP_EQUALS,
@@ -214,7 +204,7 @@ impl Token {
     }
 
     /// Returns the Right Binding Power (RBP) of a [`Token`] for right-associative operators
-    #[inline(always)]
+    #[inline]
     pub fn rbp(&self) -> u8 {
         match self {
             Token::Equals => BP_EQUALS - 1,
@@ -250,7 +240,7 @@ impl Token {
     /// let token = Token::Plus;
     /// token.raw(src); // panics
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn raw<'src>(&self, src: &'src str) -> &'src str {
         match self {
             Token::Number { start, end } => unsafe { Self::slice_unchecked(src, *start, *end) },
@@ -274,7 +264,7 @@ impl Token {
     /// let token = Token::Variable { start: 1, end: 2, hash: 0 };
     /// assert_eq!(token.source_text(src), Some("x"));
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn source_text<'src>(&self, src: &'src str) -> Option<&'src str> {
         match self {
             Token::Variable { start, end, .. } => {
@@ -295,7 +285,7 @@ impl Token {
     /// let token = Token::Number { start: 0, end: 4 };
     /// assert_eq!(token.as_f64(src), 3.14);
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn as_f64(&self, src: &str) -> f64 {
         fast_float2::parse::<f64, &str>(self.raw(src)).expect("Invalid number")
     }
@@ -308,14 +298,13 @@ impl Token {
     /// - `start` and `end` both lie on UTF-8 character boundaries in `src`
     ///
     /// Violating either condition will result in undefined behavior.
-    #[inline(always)]
+    #[inline]
     unsafe fn slice_unchecked(src: &str, start: u32, end: u32) -> &str {
         unsafe { src.get_unchecked(start as usize..end as usize) }
     }
 }
 
 impl std::fmt::Debug for Token {
-    /// Formats `Token` for debugging.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Token::Number { start, end } => write!(f, "Number([{start}..{end}])"),
@@ -335,18 +324,13 @@ impl std::fmt::Debug for Token {
 }
 
 pub struct Tokenizer<'src> {
-    src: &'src [u8],
-    text: &'src str,
+    src: &'src str,
     pos: usize,
 }
 
 impl<'src> Tokenizer<'src> {
     pub fn new(input: &'src str) -> Self {
-        Tokenizer {
-            src: input.as_bytes(),
-            text: input,
-            pos: 0,
-        }
+        Tokenizer { src: input, pos: 0 }
     }
 
     /// Tokenizes the `Tokenizer`'s source string into a Vector of `Token`, replacing any existing contents.
@@ -404,7 +388,7 @@ impl<'src> Tokenizer<'src> {
                     // implicit multiply: "2x" → Number Asterisk Variable
                     // doesn't perform for "Deg" and "Rad"
                     let implicit = self.current().is_some_and(is_variable)
-                        && !matches!(self.peek_variable_hash(), KW_DEG | KW_RAD);
+                        && !matches!(self.peek_hash(), KW_DEG | KW_RAD);
                     tokens.push(token);
                     if implicit {
                         tokens.push(Token::Multiply);
@@ -461,7 +445,7 @@ impl<'src> Tokenizer<'src> {
                 }
 
                 ByteClass::Unknown => {
-                    let character = self.text[self.pos..].chars().next().unwrap();
+                    let character = self.src[self.pos..].chars().next().unwrap();
                     return Err(unknown_character_error(character));
                 }
             }
@@ -469,26 +453,31 @@ impl<'src> Tokenizer<'src> {
         Ok(())
     }
 
+    #[inline]
+    fn bytes(&self) -> &[u8] {
+        self.src.as_bytes()
+    }
+
     /// Returns the byte at the current position or `None` if positioned at or past the end of `src`.
-    #[inline(always)]
+    #[inline]
     fn current(&self) -> Option<u8> {
-        self.src.get(self.pos).copied()
+        self.bytes().get(self.pos).copied()
     }
 
     /// Advances the current position by one byte.
     ///
     /// Callers must ensure this doesn't advance past `src.len()` if they intend to call `current()` or similar afterward without first checking for `None`.
-    #[inline(always)]
+    #[inline]
     fn advance(&mut self) {
         self.pos += 1;
     }
 
     /// Hashes the variable starting at `self.pos` without consuming it.
-    #[inline(always)]
-    fn peek_variable_hash(&self) -> u64 {
+    #[inline]
+    fn peek_hash(&self) -> u64 {
         let mut hash = FNV_OFFSET;
         let mut i = self.pos;
-        while let Some(&byte) = self.src.get(i) {
+        while let Some(&byte) = self.bytes().get(i) {
             if !is_variable(byte) {
                 break;
             }
@@ -509,7 +498,7 @@ impl<'src> Tokenizer<'src> {
     /// # Errors
     /// - Returns `Err` if a second `.` is encounterd.
     /// - Returns `Err` if no digits was consumed at all. (E.g. a lone `.` with no digits before or after it)
-    #[inline(always)]
+    #[inline]
     fn read_number(&mut self) -> Result<Token, String> {
         let start = self.pos as u32;
         let mut dot_seen = false;
@@ -545,7 +534,7 @@ impl<'src> Tokenizer<'src> {
     ///
     /// Returns `Token::Variable` spanning the consumed range, along with
     /// an FNV-1a hash of the Variable's bytes
-    #[inline(always)]
+    #[inline]
     fn read_variable(&mut self) -> Token {
         let start = self.pos as u32;
         let mut hash = FNV_OFFSET;
@@ -569,19 +558,19 @@ impl<'src> Tokenizer<'src> {
     /// Consumes an exponent suffix (`E`, optional sign, one or more digits) if one is present.
     /// Leaves `self.pos` untouched when `E` isn't followed by a valid exponent, so `2Ex`
     /// still lexes as `2 * Ex`.
-    #[inline(always)]
+    #[inline]
     fn read_exponent(&mut self) {
         if self.current() != Some(b'E') {
             return;
         }
         let mut i = self.pos + 1;
-        if matches!(self.src.get(i).copied(), Some(b'+' | b'-')) {
+        if matches!(self.bytes().get(i).copied(), Some(b'+' | b'-')) {
             i += 1;
         }
-        if !self.src.get(i).is_some_and(|b| b.is_ascii_digit()) {
+        if !self.bytes().get(i).is_some_and(|b| b.is_ascii_digit()) {
             return;
         }
-        while self.src.get(i).is_some_and(|b| b.is_ascii_digit()) {
+        while self.bytes().get(i).is_some_and(|b| b.is_ascii_digit()) {
             i += 1;
         }
         self.pos = i;
@@ -596,13 +585,13 @@ impl<'src> Tokenizer<'src> {
 ///
 /// # Returns
 /// The hash of a byte.
-#[inline(always)]
+#[inline]
 fn fnv1a_update(hash: u64, byte: u8) -> u64 {
     (hash ^ byte as u64).wrapping_mul(FNV_PRIME)
 }
 
 /// Takes in a u8 and returns a boolean indicating whether it is a valid Variable character.
-#[inline(always)]
+#[inline]
 fn is_variable(c: u8) -> bool {
     unsafe { (*VARIABLE.get_unchecked(c as usize / 8) >> (c % 8)) & 1 != 0 }
 }
@@ -610,11 +599,10 @@ fn is_variable(c: u8) -> bool {
 // Error handles ----------------------------------------------------------
 #[cold]
 #[inline(never)]
-fn invalid_second_dot_error(src: &[u8], start: u32, pos: usize) -> String {
-    let invalid_number = std::str::from_utf8(&src[start as usize..=pos]).unwrap();
+fn invalid_second_dot_error(src: &str, start: u32, pos: usize) -> String {
     format!(
         "Invalid number: Unexpected second '.' in '{}'",
-        invalid_number
+        &src[start as usize..=pos]
     )
 }
 

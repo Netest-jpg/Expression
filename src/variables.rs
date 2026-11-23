@@ -1,20 +1,20 @@
 use crate::parser::Node;
 pub const VARIABLE_LIMIT: usize = 64;
 
-pub struct VariableBank {
+pub struct VariableValues {
     entries: [(u64, f64); VARIABLE_LIMIT],
     len: usize,
 }
 
-impl Default for VariableBank {
+impl Default for VariableValues {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl VariableBank {
+impl VariableValues {
     pub fn new() -> Self {
-        VariableBank {
+        VariableValues {
             entries: [(0u64, 0.0f64); VARIABLE_LIMIT],
             len: 0,
         }
@@ -24,17 +24,17 @@ impl VariableBank {
     ///
     /// If `hash` is already present, its value is overwritten in place. Otherwise a new entry is appended.
     ///
-    /// Returns `Err` if `VariableBank` has already reached `VARIABLE_LIMIT`.
+    /// Returns `Err` if `VariableValues` has already reached `VARIABLE_LIMIT`.
     ///
     /// # Examples
     /// ```ignore
-    /// let mut bank = VariableBank::new();
+    /// let mut values = VariableValues::new();
     ///
-    /// assert!(bank.set(1, 10.0).is_ok());
-    /// assert!(bank.set(1, 20.0).is_ok()); // updates, doesn't create a new slot
-    /// assert_eq!(bank.get(1), Some(20.0));
+    /// assert!(values.set(1, 10.0).is_ok());
+    /// assert!(values.set(1, 20.0).is_ok()); // updates, doesn't create a new slot
+    /// assert_eq!(values.get(1), Some(20.0));
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn set(&mut self, hash: u64, value: f64) -> Result<(), String> {
         if let Some(entry) = self.entries[..self.len]
             .iter_mut()
@@ -57,13 +57,13 @@ impl VariableBank {
     ///
     /// # Examples
     /// ```ignore
-    /// let mut bank = VariableBank::new();
+    /// let mut values = VariableValues::new();
     ///
-    /// bank.set(42, 3.14).unwrap();
-    /// assert_eq!(bank.get(42), Some(3.14));
-    /// assert_eq!(bank.get(7), None);
+    /// values.set(42, 3.14).unwrap();
+    /// assert_eq!(values.get(42), Some(3.14));
+    /// assert_eq!(values.get(7), None);
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn get(&self, hash: u64) -> Option<f64> {
         self.entries[..self.len]
             .iter()
@@ -71,101 +71,86 @@ impl VariableBank {
             .map(|(_, v)| *v)
     }
 
-    /// Removes all the bindings inside `VariableBank` lazily.
+    /// Removes all the bindings inside `VariableValues` lazily.
     ///
     /// This just resets the length counter to 0; the underlying array slots are left as-is and get overwritten lazily by future `set()` calls.
     ///
     /// # Examples
     /// ```ignore
-    /// let mut bank = VariableBank::new();
-    /// bank.set(1, 5.0).unwrap();
-    /// bank.clear();
-    /// assert_eq!(bank.get(1), None);
+    /// let mut values = VariableValues::new();
+    /// values.set(1, 5.0).unwrap();
+    /// values.clear();
+    /// assert_eq!(values.get(1), None);
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn clear(&mut self) {
         self.len = 0;
     }
 
-    /// Returns a copy of `VariableBank` with `hash`'s slot reset to `0.0` — or, if `hash` isn't present yet, a new slot for it appended and set to `0.0`.
+    /// Returns a copy of `self` with a new entry `(hash, 0.0)` appended.
     ///
-    /// Call [`set_last`] each iteration to update that value. This is the allocation strategy the Newton solver relies on:
-    /// one stack copy of the bank before the loop starts, then a single `f64` write per iteration inside the loop — no heap allocations for the whole solve.
+    /// Use [`set_last`] to update the new entry's value in place.
+    ///
+    /// `hash` must not already be bound in `self`.
     ///
     /// # Panics
-    /// - Panics (debug builds) if `hash` is already bound in `self`. `set_last` always writes to the
-    ///   *last* slot, so probing an already-bound hash would silently corrupt that hash's real value
-    ///   instead of updating the probe — callers must only probe genuinely unbound variables (see
-    ///   `evaluate_pending`, which filters `free` down to unbound hashes before calling this).
-    /// - Panics if the bank is already at `VARIABLE_LIMIT` capacity.
+    /// Panics if `self` is already at `VARIABLE_LIMIT` capacity.
     ///
     /// # Examples
     /// ```ignore
-    /// let bank = VariableBank::new();
-    /// let mut trial = bank.fork_probe(99);
-    /// trial.set_last(1.5);
-    /// assert_eq!(trial.get(99), Some(1.5));
+    /// let bank = VariableValues::new();
+    /// let mut probe = bank.fork_probe(99);
+    /// probe.set_last(1.5);
+    /// assert_eq!(probe.get(99), Some(1.5));
     /// ```
-    pub fn fork_probe(&self, hash: u64) -> VariableBank {
-        debug_assert!(
-            self.get(hash).is_none(),
-            "fork_probe called on an already-bound hash; set_last would silently corrupt it"
-        );
-        let mut probe = VariableBank {
+    pub fn fork_probe(&self, hash: u64) -> VariableValues {
+        let mut probe = VariableValues {
             entries: self.entries,
             len: self.len,
         };
-        if let Some(entry) = probe.entries[..probe.len]
-            .iter_mut()
-            .find(|(h, _)| *h == hash)
-        {
-            entry.1 = 0.0;
-        } else {
-            probe.entries[probe.len] = (hash, 0.0);
-            probe.len += 1;
-        }
+        probe.entries[probe.len] = (hash, 0.0);
+        probe.len += 1;
         probe
     }
 
-    /// Updates the value of the last entry — the unknown slot created by `fork_probe()` — in place.
+    /// Sets the value of the last entry in place.
     ///
-    /// Intended to be called once per Newton iteration on a bank produced by `fork_probe()`, so the solver can update the single free variable without touching the rest of the bindings or allocating.
+    /// Intended for use on a probe returned by [`fork_probe`], whose last entry is the newly appended one.
     ///
     /// # Panics
-    /// Panics if the bank is empty (`len == 0`).
+    /// Panics if `self` is empty.
     ///
     /// # Examples
     /// ```ignore
-    /// let bank = VariableBank::new();
+    /// let bank = VariableValues::new();
     /// let mut probe = bank.fork_probe(1);
     /// probe.set_last(2.0);
-    ///
     /// assert_eq!(probe.get(1), Some(2.0));
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn set_last(&mut self, value: f64) {
         self.entries[self.len - 1].1 = value;
     }
 }
 
-pub struct VariableList {
+pub struct VariablePos {
     entries: [(u64, u32, u32); VARIABLE_LIMIT],
     len: usize,
-    overflowed: bool,
+    overflow: bool,
 }
 
-impl Default for VariableList {
+impl Default for VariablePos {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl VariableList {
+impl VariablePos {
     pub fn new() -> Self {
-        VariableList {
+        VariablePos {
             entries: [(0, 0, 0); VARIABLE_LIMIT],
             len: 0,
-            overflowed: false,
+            overflow: false,
         }
     }
 
@@ -173,10 +158,10 @@ impl VariableList {
     ///
     /// # Examples
     /// ```ignore
-    /// let list = VariableList::new();
+    /// let list = VariablePos::new();
     /// assert_eq!(list.len(), 0);
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn len(&self) -> usize {
         self.len
     }
@@ -185,10 +170,10 @@ impl VariableList {
     ///
     /// # Examples
     /// ```ignore
-    /// let list = VariableList::new();
+    /// let list = VariablePos::new();
     /// assert!(list.is_empty());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
@@ -197,22 +182,22 @@ impl VariableList {
     ///
     /// # Examples
     /// ```ignore
-    /// let list = VariableList::new();
-    /// assert!(!list.is_full());
+    /// let list = VariablePos::new();
+    /// assert!(!list.overflow());
     /// ```
-    #[inline(always)]
-    pub fn is_full(&self) -> bool {
-        self.overflowed
+    #[inline]
+    pub fn overflow(&self) -> bool {
+        self.overflow
     }
 
     /// Returns an iterator over the `(hash, start, end)` entries currently stored, in insertion order.
     ///
     /// # Examples
     /// ```ignore
-    /// let list = VariableList::new();
+    /// let list = VariablePos::new();
     /// assert_eq!(list.iter().count(), 0);
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn iter(&self) -> std::slice::Iter<'_, (u64, u32, u32)> {
         self.entries[..self.len].iter()
     }
@@ -220,14 +205,7 @@ impl VariableList {
     /// Keeps only the entries for which `f` (Condition) returns `true`, lazily.
     ///
     /// Entries are compacted in place: retained entries are moved to the front `(index 0)` in their original order, and `len` is shrunk to match.
-    ///
-    /// # Examples
-    /// ```ignore
-    /// let mut list = VariableList::new();
-    /// // ... populated via collect_variables() ...
-    /// list.retain(|(hash, _, _)| *hash != 0);
-    /// ```
-    #[inline(always)]
+    #[inline]
     pub fn retain(&mut self, mut f: impl FnMut(&(u64, u32, u32)) -> bool) {
         let mut out = 0;
         for i in 0..self.len {
@@ -242,11 +220,8 @@ impl VariableList {
 
     /// Appends `(hash, start, end)` if `hash` isn't already present.
     ///
-    /// If the `VariableList` has reached `VARIABLE_LIMIT`, sets `overflowed` and drops the entry instead of appending.
-    ///
-    /// # Safety
-    /// Uses unchecked indexing internally. Sound since the write is guarded by `self.len < VARIABLE_LIMIT` which stays within `self.len <= VARIABLE_LIMIT == self.entries.len()`
-    #[inline(always)]
+    /// If the `VariablePos` has reached `VARIABLE_LIMIT`, sets `overflow` and drops the entry instead of appending.
+    #[inline]
     fn push_unique(&mut self, hash: u64, start: u32, end: u32) {
         if self.iter().any(|(h, _, _)| *h == hash) {
             return;
@@ -255,22 +230,8 @@ impl VariableList {
             self.entries[self.len] = (hash, start, end);
             self.len += 1;
         } else {
-            self.overflowed = true;
+            self.overflow = true;
         }
-    }
-}
-
-// `VariableList` is a fixed-size, append-only collection rather than a `Vec`, so it can't offer `Deref<Target = [_]>` for free; this `Index` impl gives it the familiar `list[i]` syntax anyway, scoped to just the filled `..len` prefix of the backing array.
-impl std::ops::Index<usize> for VariableList {
-    type Output = (u64, u32, u32);
-
-    /// Returns the entry at `index` within the filled portion of the list.
-    ///
-    /// # Panics
-    /// Panics if `index >= self.len()`
-    #[inline(always)]
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.entries[..self.len][index]
     }
 }
 
@@ -282,14 +243,14 @@ impl std::ops::Index<usize> for VariableList {
 /// let vars = collect_variables(&arena, root);
 /// assert_eq!(vars.len(), 1);
 /// ```
-pub fn collect_variables(arena: &[Node], root: u32) -> VariableList {
-    let mut out = VariableList::new();
-    collect_vars_inner(arena, root, &mut out);
+pub fn collect_variables(arena: &[Node], root: u32) -> VariablePos {
+    let mut out = VariablePos::new();
+    visit(arena, root, &mut out);
     out
 }
 
 /// Recursive worker behind `collect_variables`: walks a single node and its children, recording any `Node::Variable` it finds into `out`.
-fn collect_vars_inner(arena: &[Node], idx: u32, out: &mut VariableList) {
+fn visit(arena: &[Node], idx: u32, out: &mut VariablePos) {
     match &arena[idx as usize] {
         Node::Variable(start, end, hash) => {
             out.push_unique(*hash, *start, *end);
@@ -327,7 +288,7 @@ fn collect_vars_inner(arena: &[Node], idx: u32, out: &mut VariableList) {
         | Node::Factorial(a)
         | Node::Deg(a)
         | Node::Rad(a) => {
-            collect_vars_inner(arena, *a, out);
+            visit(arena, *a, out);
         }
         Node::Add(a, b)
         | Node::Sub(a, b)
@@ -337,8 +298,8 @@ fn collect_vars_inner(arena: &[Node], idx: u32, out: &mut VariableList) {
         | Node::LogBase(a, b)
         | Node::Root(a, b)
         | Node::Equation(a, b) => {
-            collect_vars_inner(arena, *a, out);
-            collect_vars_inner(arena, *b, out);
+            visit(arena, *a, out);
+            visit(arena, *b, out);
         }
     }
 }
@@ -347,7 +308,7 @@ fn collect_vars_inner(arena: &[Node], idx: u32, out: &mut VariableList) {
 #[cold]
 #[inline(never)]
 fn variable_limit_reached_err() -> String {
-    format!("Variable limit ({VARIABLE_LIMIT}) reached; clear some variables first")
+    format!("Variable limit ({VARIABLE_LIMIT}) reached. Type 'clear'.")
 }
 //----------------------------------------------------------------------------------
 
@@ -358,7 +319,7 @@ mod tests {
     use crate::parser::Parser;
 
     #[test]
-    fn test_collect_variables_from_log_base() {
+    fn test_collect_variables() {
         let src = "log_b(k)";
         let mut tokens = Vec::new();
         let mut arena = Vec::new();
@@ -366,8 +327,11 @@ mod tests {
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
 
         let vars = collect_variables(&arena, root);
+        let mut iter = vars.iter();
+        let &(_, s0, e0) = iter.next().unwrap();
+        let &(_, s1, e1) = iter.next().unwrap();
         assert_eq!(vars.len(), 2);
-        assert_eq!(&src[vars[0].1 as usize..vars[0].2 as usize], "b");
-        assert_eq!(&src[vars[1].1 as usize..vars[1].2 as usize], "k");
+        assert_eq!(&src[s0 as usize..e0 as usize], "b");
+        assert_eq!(&src[s1 as usize..e1 as usize], "k");
     }
 }

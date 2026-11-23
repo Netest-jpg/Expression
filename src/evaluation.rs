@@ -1,6 +1,6 @@
 use crate::angles::{cos_deg, sin_deg, tan_deg};
 use crate::parser::Node;
-use crate::variables::{VARIABLE_LIMIT, VariableBank, collect_variables};
+use crate::variables::{VARIABLE_LIMIT, VariableValues, collect_variables};
 
 #[derive(Debug)]
 pub enum EvaluationError {
@@ -19,16 +19,16 @@ impl std::fmt::Display for EvaluationError {
                 write!(f, "Unbound variable")
             }
             EvaluationError::IsEquation => {
-                write!(f, "Use 'evaluate' to evaluate an equation")
+                write!(f, "Cannot evaluate an equation here")
             }
             EvaluationError::FactorialDomain => {
-                write!(f, "Factorial is only defined for integers from 0 to 170")
+                write!(f, "Factorial is only defined for integers from 0-170")
             }
             EvaluationError::DivisionByZero => {
                 write!(f, "Division by zero")
             }
             EvaluationError::Overflow => {
-                write!(f, "Result is too large")
+                write!(f, "Result is out of range")
             }
             EvaluationError::Domain(msg) => {
                 write!(f, "{msg}")
@@ -37,14 +37,11 @@ impl std::fmt::Display for EvaluationError {
     }
 }
 
-impl std::error::Error for EvaluationError {}
-
 /// Evaluates an expression if all variables are in-bound and returns the result as `f64`.
 ///
-/// Returns `Err` via `EvaluationMessages` if there are any unbound variables or `Node::Equation`.
-#[rustfmt::skip]
-pub fn evaluate(arena: &[Node], idx: u32, vars: &VariableBank) -> Result<f64, EvaluationError> {
-    match &arena[idx as usize] {
+/// Returns `Err` via `EvaluationMessages`.
+pub fn evaluate(arena: &[Node], index: u32, vars: &VariableValues) -> Result<f64, EvaluationError> {
+    match &arena[index as usize] {
         Node::Number(v) => Ok(*v),
         Node::Constant(v) => Ok(*v),
 
@@ -61,7 +58,7 @@ pub fn evaluate(arena: &[Node], idx: u32, vars: &VariableBank) -> Result<f64, Ev
             let x = evaluate(arena, *a, vars)?;
             let y = evaluate(arena, *b, vars)?;
             if y == 0.0 {
-                return Err(EvaluationError::DivisionByZero); // covers 0/0 too
+                return Err(EvaluationError::DivisionByZero);
             }
             overflow(x / y)
         }
@@ -74,7 +71,7 @@ pub fn evaluate(arena: &[Node], idx: u32, vars: &VariableBank) -> Result<f64, Ev
                     "Negative base with a non-integer exponent",
                 ))
             } else if r.is_infinite() && x == 0.0 {
-                Err(EvaluationError::DivisionByZero) // 0 ^ negative
+                Err(EvaluationError::DivisionByZero)
             } else {
                 overflow(r)
             }
@@ -86,20 +83,8 @@ pub fn evaluate(arena: &[Node], idx: u32, vars: &VariableBank) -> Result<f64, Ev
         Node::Sin(a) => eval_angle(arena, *a, vars, f64::sin, sin_deg),
         Node::Cos(a) => eval_angle(arena, *a, vars, f64::cos, cos_deg),
         Node::Tan(a) => eval_angle(arena, *a, vars, f64::tan, tan_deg),
-        Node::Sec(a) => eval_angle(
-            arena,
-            *a,
-            vars,
-            |v| 1.0 / v.cos(),
-            |v| 1.0 / cos_deg(v),
-        ),
-        Node::Csc(a) => eval_angle(
-            arena,
-            *a,
-            vars,
-            |v| 1.0 / v.sin(),
-            |v| 1.0 / sin_deg(v),
-        ),
+        Node::Sec(a) => eval_angle(arena, *a, vars, |v| 1.0 / v.cos(), |v| 1.0 / cos_deg(v)),
+        Node::Csc(a) => eval_angle(arena, *a, vars, |v| 1.0 / v.sin(), |v| 1.0 / sin_deg(v)),
         Node::Cot(a) => eval_angle(
             arena,
             *a,
@@ -112,10 +97,14 @@ pub fn evaluate(arena: &[Node], idx: u32, vars: &VariableBank) -> Result<f64, Ev
         Node::Acos(a) => domain(evaluate(arena, *a, vars)?.acos(), "acos needs |x| <= 1"),
         Node::Atan(a) => Ok(evaluate(arena, *a, vars)?.atan()),
 
-        #[rustfmt::skip]
-        Node::Asec(a) => domain((1.0 / evaluate(arena, *a, vars)?).acos(),"asec needs |x| >= 1"),
-        #[rustfmt::skip]
-        Node::Acsc(a) => domain((1.0 / evaluate(arena, *a, vars)?).asin(),"acsc needs |x| >= 1"),
+        Node::Asec(a) => domain(
+            (1.0 / evaluate(arena, *a, vars)?).acos(),
+            "asec needs |x| >= 1",
+        ),
+        Node::Acsc(a) => domain(
+            (1.0 / evaluate(arena, *a, vars)?).asin(),
+            "acsc needs |x| >= 1",
+        ),
         Node::Acot(a) => Ok((1.0 / evaluate(arena, *a, vars)?).atan()),
 
         Node::Sinh(a) => overflow(evaluate(arena, *a, vars)?.sinh()),
@@ -123,25 +112,41 @@ pub fn evaluate(arena: &[Node], idx: u32, vars: &VariableBank) -> Result<f64, Ev
         Node::Tanh(a) => Ok(evaluate(arena, *a, vars)?.tanh()),
 
         Node::Sech(a) => Ok(1.0 / evaluate(arena, *a, vars)?.cosh()),
-        Node::Csch(a) => domain(1.0 / evaluate(arena, *a, vars)?.sinh(), "csch is undefined at 0"),
-        Node::Coth(a) => domain(1.0 / evaluate(arena, *a, vars)?.tanh(), "coth is undefined at 0"),
+        Node::Csch(a) => domain(
+            1.0 / evaluate(arena, *a, vars)?.sinh(),
+            "csch is undefined at 0",
+        ),
+        Node::Coth(a) => domain(
+            1.0 / evaluate(arena, *a, vars)?.tanh(),
+            "coth is undefined at 0",
+        ),
 
         Node::Asinh(a) => Ok(evaluate(arena, *a, vars)?.asinh()),
         Node::Acosh(a) => domain(evaluate(arena, *a, vars)?.acosh(), "acosh needs x >= 1"),
         Node::Atanh(a) => domain(evaluate(arena, *a, vars)?.atanh(), "atanh needs |x| < 1"),
 
-        Node::Asech(a) => domain((1.0 / evaluate(arena, *a, vars)?).acosh(),"asech needs 0 < x <= 1"),
-        Node::Acsch(a) => domain((1.0 / evaluate(arena, *a, vars)?).asinh(),"acsch is undefined at 0"),
-        Node::Acoth(a) => domain((1.0 / evaluate(arena, *a, vars)?).atanh(),"acoth needs |x| > 1"),
+        Node::Asech(a) => domain(
+            (1.0 / evaluate(arena, *a, vars)?).acosh(),
+            "asech needs 0 < x <= 1",
+        ),
+        Node::Acsch(a) => domain(
+            (1.0 / evaluate(arena, *a, vars)?).asinh(),
+            "acsch is undefined at 0",
+        ),
+        Node::Acoth(a) => domain(
+            (1.0 / evaluate(arena, *a, vars)?).atanh(),
+            "acoth needs |x| > 1",
+        ),
 
         Node::Ln(a) => domain(evaluate(arena, *a, vars)?.ln(), "ln needs x > 0"),
         Node::Log(a) => domain(evaluate(arena, *a, vars)?.log10(), "log needs x > 0"),
         Node::LogBase(base, arg) => {
             let b = evaluate(arena, *base, vars)?;
             let x = evaluate(arena, *arg, vars)?;
-            // Checked explicitly: log_0(5) would otherwise come out as a finite -0
             if b <= 0.0 || b == 1.0 || x <= 0.0 {
-                return Err(EvaluationError::Domain("log_b(x) needs b > 0, b != 1 and x > 0"));
+                return Err(EvaluationError::Domain(
+                    "log_b(x) needs b > 0, b != 1 and x > 0",
+                ));
             }
             Ok(x.log(b))
         }
@@ -152,11 +157,13 @@ pub fn evaluate(arena: &[Node], idx: u32, vars: &VariableBank) -> Result<f64, Ev
             let n = evaluate(arena, *n, vars)?;
             let x = evaluate(arena, *x, vars)?;
             if n == 0.0 {
-                return Err(EvaluationError::Domain("Root index cannot be zero"));
+                return Err(EvaluationError::Domain("Root index cannot be 0"));
             }
             let r = nth_root(n, x);
             if r.is_nan() {
-                Err(EvaluationError::Domain("Root of a negative number needs an odd integer index"))
+                Err(EvaluationError::Domain(
+                    "Root of a negative number needs an odd integer index",
+                ))
             } else {
                 overflow(r)
             }
@@ -219,9 +226,12 @@ pub(crate) fn factorial(x: f64) -> Option<f64> {
 ///
 /// # Errors
 /// - The right-hand side fails to evaluate (e.g. an unbound variable).
-/// - `vars` is full and the variable is new (see [`VariableBank::set`]).
-#[rustfmt::skip]
-pub fn try_simple_assign(arena: &[Node], root: u32, vars: &mut VariableBank) -> Result<Option<(u32, u32, f64)>, String> {
+/// - `vars` is full and the variable is new (see [`VariableValues::set`]).
+pub fn try_assign(
+    arena: &[Node],
+    root: u32,
+    vars: &mut VariableValues,
+) -> Result<Option<(u32, u32, f64)>, String> {
     let Node::Equation(lhs, rhs) = &arena[root as usize] else {
         return Ok(None);
     };
@@ -235,24 +245,25 @@ pub fn try_simple_assign(arena: &[Node], root: u32, vars: &mut VariableBank) -> 
     Ok(Some((var_start, var_end, value)))
 }
 
+#[inline]
 fn eval_angle(
     arena: &[Node],
-    idx: u32,
-    vars: &VariableBank,
+    index: u32,
+    vars: &VariableValues,
     f_rad: fn(f64) -> f64,
     f_deg: fn(f64) -> f64,
 ) -> Result<f64, EvaluationError> {
-    let v = match &arena[idx as usize] {
+    let v = match &arena[index as usize] {
         Node::Deg(inner) => f_deg(evaluate(arena, *inner, vars)?),
         Node::Rad(inner) => f_rad(evaluate(arena, *inner, vars)?),
-        _ => f_rad(evaluate(arena, idx, vars)?),
+        _ => f_rad(evaluate(arena, index, vars)?),
     };
     domain(v, "Trig function is undefined as this angle")
 }
 
 /// `v` if finite, otherwise a domain error carrying `msg`. For functions where NaN or
 /// ±inf means "undefined here" (sqrt(-1), ln(0), tan(90), ...).
-#[inline(always)]
+#[inline]
 fn domain(v: f64, msg: &'static str) -> Result<f64, EvaluationError> {
     if v.is_finite() {
         Ok(v)
@@ -263,7 +274,7 @@ fn domain(v: f64, msg: &'static str) -> Result<f64, EvaluationError> {
 
 /// `v` if finite, otherwise `Overflow`. For operations on finite inputs where overflow
 /// is the only way to go wrong.
-#[inline(always)]
+#[inline]
 fn overflow(v: f64) -> Result<f64, EvaluationError> {
     if v.is_finite() {
         Ok(v)
@@ -305,8 +316,12 @@ pub enum EvaluationResult {
 /// - Evaluation of either side fails.
 /// - `newton` fails to converge for a single free variable.
 /// - More than one variable remains unassigned.
-#[rustfmt::skip]
-pub fn evaluate_or_solve(arena: &[Node], root: u32, vars: &VariableBank, src: &str) -> Result<EvaluationResult, String> {
+pub fn evaluate_or_solve(
+    arena: &[Node],
+    root: u32,
+    vars: &VariableValues,
+    src: &str,
+) -> Result<EvaluationResult, String> {
     let (lhs_idx, rhs_idx) = match &arena[root as usize] {
         Node::Equation(l, r) => (*l, *r),
         _ => {
@@ -316,8 +331,10 @@ pub fn evaluate_or_solve(arena: &[Node], root: u32, vars: &VariableBank, src: &s
     };
 
     let mut free = collect_variables(arena, root);
-    if free.is_full() {
-        return Err(format!("Cannot evaluate: variable limit ({VARIABLE_LIMIT}) exceeded"));
+    if free.overflow() {
+        return Err(format!(
+            "Cannot evaluate: variable limit ({VARIABLE_LIMIT}) exceeded"
+        ));
     }
     free.retain(|(hash, _, _)| vars.get(*hash).is_none());
 
@@ -332,7 +349,7 @@ pub fn evaluate_or_solve(arena: &[Node], root: u32, vars: &VariableBank, src: &s
         }
 
         1 => {
-            let (unknown_hash, start, end) = free[0];
+            let &(unknown_hash, start, end) = free.iter().next().unwrap();
             let name = src[start as usize..end as usize].to_string();
 
             let mut probe = vars.fork_probe(unknown_hash);
@@ -381,7 +398,9 @@ pub fn evaluate_or_solve(arena: &[Node], root: u32, vars: &VariableBank, src: &s
                 }
                 msg.push_str(&src[*start as usize..*end as usize]);
             }
-            msg.push_str(".\nAssign values with  name=value  or leave exactly one free for solving.");
+            msg.push_str(
+                ".\nAssign values with  name=value  or leave exactly one free for solving.",
+            );
             Err(msg)
         }
     }
@@ -428,12 +447,12 @@ mod tests {
     use super::*;
     use crate::lexer::Tokenizer;
     use crate::parser::Parser;
-    use crate::variables::{VARIABLE_LIMIT, VariableBank};
+    use crate::variables::{VARIABLE_LIMIT, VariableValues};
 
     fn try_eval(src: &str) -> Result<f64, EvaluationError> {
         let mut tokens = Vec::new();
         let mut arena = Vec::new();
-        let vars = VariableBank::new();
+        let vars = VariableValues::new();
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
         evaluate(&arena, root, &vars)
@@ -442,7 +461,7 @@ mod tests {
     fn parse_and_eval(src: &str) -> f64 {
         let mut tokens = Vec::new();
         let mut arena = Vec::new();
-        let vars = VariableBank::new();
+        let vars = VariableValues::new();
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
         evaluate(&arena, root, &vars).unwrap()
@@ -544,11 +563,11 @@ mod tests {
     fn test_simple_assign() {
         let mut tokens = Vec::new();
         let mut arena = Vec::new();
-        let mut vars = VariableBank::new();
+        let mut vars = VariableValues::new();
         let src = "x=42";
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
-        let result = try_simple_assign(&arena, root, &mut vars).unwrap();
+        let result = try_assign(&arena, root, &mut vars).unwrap();
         assert!(result.is_some());
         let (start, end, val) = result.unwrap();
         assert_eq!(&src[start as usize..end as usize], "x");
@@ -559,12 +578,12 @@ mod tests {
     fn test_assign_then_use() {
         let mut tokens = Vec::new();
         let mut arena = Vec::new();
-        let mut vars = VariableBank::new();
+        let mut vars = VariableValues::new();
         // Assign x=3
         let src = "x=3";
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
-        try_simple_assign(&arena, root, &mut vars).unwrap();
+        try_assign(&arena, root, &mut vars).unwrap();
         // evaluate x*x
         arena.clear();
         let src2 = "x*x";
@@ -578,7 +597,7 @@ mod tests {
         // x+2=5  →  x=3
         let mut tokens = Vec::new();
         let mut arena = Vec::new();
-        let vars = VariableBank::new();
+        let vars = VariableValues::new();
         let src = "x+2=5";
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
@@ -596,7 +615,7 @@ mod tests {
         // x^2=9  →  x=3 or x=-3 (Newton from x0=1 → 3)
         let mut tokens = Vec::new();
         let mut arena = Vec::new();
-        let vars = VariableBank::new();
+        let vars = VariableValues::new();
         let src = "x^2=9";
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
@@ -620,7 +639,7 @@ mod tests {
     fn test_too_many_free_vars_error() {
         let mut tokens = Vec::new();
         let mut arena = Vec::new();
-        let vars = VariableBank::new();
+        let vars = VariableValues::new();
         let src = "x+y=5";
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
@@ -629,7 +648,7 @@ mod tests {
 
     #[test]
     fn test_varstore_limit() {
-        let mut vars = VariableBank::new();
+        let mut vars = VariableValues::new();
         // Fill all VARIABLE_LIMIT slots with distinct hashes.
         for i in 0..VARIABLE_LIMIT {
             vars.set(i as u64 + 1, i as f64).unwrap(); // hash 0 is the zero-init sentinel; use 1..=64
@@ -726,9 +745,9 @@ mod tests {
 
     #[test]
     fn test_overflow_errors() {
-        assert_eq!(eval_err("10^400"), "Result is too large");
-        assert_eq!(eval_err("1E300*1E300"), "Result is too large");
-        assert_eq!(eval_err("sinh(1000)"), "Result is too large");
+        assert_eq!(eval_err("10^400"), "Result is out of range");
+        assert_eq!(eval_err("1E300*1E300"), "Result is out of range");
+        assert_eq!(eval_err("sinh(1000)"), "Result is out of range");
     }
 
     #[test]

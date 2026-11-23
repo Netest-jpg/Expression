@@ -82,7 +82,6 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
             }
             push_node(arena, Node::Mul(a, b))
         }
-        #[rustfmt::skip]
         Node::Div(a, b) => {
             let a = simplify(arena, a);
             let b = simplify(arena, b);
@@ -98,7 +97,6 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
             push_node(arena, Node::Div(a, b))
         }
 
-        #[rustfmt::skip]
         Node::Pow(base, exponent) => {
             let base = simplify(arena, base);
             let exponent = simplify(arena, exponent);
@@ -115,10 +113,12 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
                 return base; // x^1 -> x
             }
             if let Node::LogBase(log_base, arg) = arena[exponent as usize]
-                && let (Node::Number(b1), Node::Number(b2)) = (&arena[base as usize], &arena[log_base as usize])
-                && (*b2 > 0.0 && *b2 != 1.0 && b1 == b2) {
-                    return arg; // b^log_b(k) = k where, b is a Number
-                }
+                && let (Node::Number(b1), Node::Number(b2)) =
+                    (&arena[base as usize], &arena[log_base as usize])
+                && (*b2 > 0.0 && *b2 != 1.0 && b1 == b2)
+            {
+                return arg; // b^log_b(k) = k where, b is a Number
+            }
             push_node(arena, Node::Pow(base, exponent))
         }
 
@@ -189,28 +189,31 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
 
         Node::Ln(a) => simplify_unary(arena, a, Node::Ln, f64::ln),
         Node::Log(a) => simplify_unary(arena, a, Node::Log, f64::log10),
-        #[rustfmt::skip]
+
         Node::LogBase(base, arg) => {
             let base = simplify(arena, base);
             let arg = simplify(arena, arg);
             if let Node::Pow(inner_base, k) = arena[arg as usize]
-                && let (Node::Number(b1), Node::Number(b2)) = (&arena[base as usize], &arena[inner_base as usize])
-                && (*b1 > 0.0 && *b1 != 1.0 && b1 == b2){
-                    return k; // log_b(b^k) -> k
-                }
+                && let (Node::Number(b1), Node::Number(b2)) =
+                    (&arena[base as usize], &arena[inner_base as usize])
+                && (*b1 > 0.0 && *b1 != 1.0 && b1 == b2)
+            {
+                return k; // log_b(b^k) -> k
+            }
 
             if let (Some(base), Some(arg)) = (as_number(arena, base), as_number(arena, arg))
-                && (base > 0.0 && base != 1.0) {
-                    if arg == 1.0 {
-                        return push_node(arena, Node::Number(0.0)); // log_2(1) -> 0
-                    }
-                    if arg == base {
-                        return push_node(arena, Node::Number(1.0)); // log_2(2) -> 1
-                    }
-                    if let Some(i) = fold(arena, arg.log(base)) {
-                        return i; // log_2(8) -> 3
-                    }
+                && (base > 0.0 && base != 1.0)
+            {
+                if arg == 1.0 {
+                    return push_node(arena, Node::Number(0.0)); // log_2(1) -> 0
                 }
+                if arg == base {
+                    return push_node(arena, Node::Number(1.0)); // log_2(2) -> 1
+                }
+                if let Some(i) = fold(arena, arg.log(base)) {
+                    return i; // log_2(8) -> 3
+                }
+            }
 
             push_node(arena, Node::LogBase(base, arg))
         }
@@ -247,7 +250,7 @@ pub fn simplify(arena: &mut Vec<Node>, root: u32) -> u32 {
 /// Appends `node` to `arena` and returns its index. Never overwrites existing nodes.
 ///
 /// Indices are `u32`; pushing more than `u32::MAX` nodes will silently wrap.
-#[inline(always)]
+#[inline]
 fn push_node(arena: &mut Vec<Node>, node: Node) -> u32 {
     let idx = arena.len() as u32;
     arena.push(node);
@@ -256,7 +259,7 @@ fn push_node(arena: &mut Vec<Node>, node: Node) -> u32 {
 
 /// Returns f64 if the node at `idx` is `NodeKind::Number`, else `None`
 /// Only applies to literal Number nodes — not Constants
-#[inline(always)]
+#[inline]
 fn as_number(arena: &[Node], idx: u32) -> Option<f64> {
     match arena[idx as usize] {
         Node::Number(v) => Some(v),
@@ -267,14 +270,14 @@ fn as_number(arena: &[Node], idx: u32) -> Option<f64> {
 /// Pushes `Number(v)` and returns its index, but only if `v` is finite. NaN and ±inf
 /// (domain errors, overflow) return `None`, so the caller leaves the expression unfolded
 /// and `evaluate` can report the real error.
-#[inline(always)]
+#[inline]
 fn fold(arena: &mut Vec<Node>, v: f64) -> Option<u32> {
     v.is_finite().then(|| push_node(arena, Node::Number(v)))
 }
 
 /// Shared helper for all unary function nodes: simplify the argument, constant-fold via `f` if it resolved to a Number, otherwise rebuild the node (via `ctor`) pointing at the simplified argument.
 #[rustfmt::skip]
-#[inline(always)]
+#[inline]
 fn simplify_unary(arena: &mut Vec<Node>, arg: u32, ctor: fn(u32) -> Node, f: fn(f64) -> f64) -> u32 {
     let arg = simplify(arena, arg);
     if let Some(v) = as_number(arena, arg)
@@ -315,12 +318,12 @@ fn simplify_trig(
     push_node(arena, ctor(arg))
 }
 
-#[inline(always)]
+#[inline]
 fn is_zero(arena: &[Node], idx: u32) -> bool {
     matches!(arena[idx as usize], Node::Number(v) if v == 0.0)
 }
 
-#[inline(always)]
+#[inline]
 fn is_one(arena: &[Node], idx: u32) -> bool {
     matches!(arena[idx as usize], Node::Number(v) if v == 1.0)
 }

@@ -1,9 +1,27 @@
+use expression::evaluation::EvaluationResult;
 use expression::lexer::{BP_ADD, BP_EXP, BP_MUL, Token};
 use expression::parser::Node;
-use std::io::Write;
+use std::io::{self, Write};
+
+const EPS: f64 = 1e-9;
+
+pub fn write_result<W: Write>(out: &mut W, result: EvaluationResult) -> io::Result<()> {
+    match result {
+        EvaluationResult::Value(v) => {
+            write_value(out, v)?;
+            writeln!(out)
+        }
+        EvaluationResult::Verified { lhs, rhs } => write_verified(out, lhs, rhs),
+        EvaluationResult::Solved {
+            name,
+            values,
+            count,
+        } => write_solutions(out, &name, &values[..count as usize]),
+    }
+}
 
 pub fn write_tokens<W: Write>(out: &mut W, tokens: &[Token], src: &str) -> std::io::Result<()> {
-    write!(out, "  Tokens:")?;
+    write!(out, "Tokens:")?;
     for token in tokens {
         match token {
             Token::EndOfFile => {}
@@ -35,7 +53,7 @@ pub fn write_tokens<W: Write>(out: &mut W, tokens: &[Token], src: &str) -> std::
     Ok(())
 }
 
-#[inline(always)]
+#[inline]
 pub fn write_value<W: Write>(out: &mut W, value: f64) -> std::io::Result<()> {
     if value.fract() == 0.0 && value.abs() < 1e15 {
         let mut buf = core::fmt::NumBuffer::<i64>::new();
@@ -233,7 +251,7 @@ fn write_child<W: Write>(
     }
 }
 
-#[inline(always)]
+#[inline]
 fn write_unary_recursive<W: Write>(
     out: &mut W,
     name: &str,
@@ -272,4 +290,32 @@ fn is_subscript_atomic(node: &Node) -> bool {
         node,
         Node::Number(_) | Node::Constant(_) | Node::Variable(_, _, _)
     )
+}
+
+fn write_verified<W: Write>(out: &mut W, lhs: f64, rhs: f64) -> io::Result<()> {
+    let (op, label) = if (lhs - rhs).abs() < EPS {
+        ("=", "LHS = RHS")
+    } else {
+        ("≠", "LHS ≠ RHS")
+    };
+    write_value(out, lhs)?;
+    write!(out, " {op} ")?;
+    write_value(out, rhs)?;
+    writeln!(out, "  ({label})")
+}
+
+fn write_solutions<W: Write>(out: &mut W, name: &str, values: &[f64]) -> io::Result<()> {
+    if let [a, b] = values
+        && (a + b).abs() < EPS
+    {
+        write!(out, "{name} = ±")?;
+        write_value(out, a.abs())?;
+        return writeln!(out);
+    }
+    for v in values {
+        write!(out, "{name} = ")?;
+        write_value(out, *v)?;
+        writeln!(out)?;
+    }
+    Ok(())
 }

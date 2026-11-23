@@ -1,9 +1,9 @@
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
-use expression::evaluation::{evaluate_or_solve, try_simple_assign};
+use expression::evaluation::{evaluate_or_solve, try_assign};
 use expression::lexer::Tokenizer;
 use expression::parser::{Node, Parser};
 use expression::simplification::simplify;
-use expression::variables::{VariableBank, collect_variables};
+use expression::variables::{VariableValues, collect_variables};
 
 fn bench_full_pipeline(c: &mut Criterion) {
     let src = "sin(x)^2 + cos(x)^2 + sqrt(9) * ln(e)";
@@ -42,12 +42,12 @@ fn bench_assignment(c: &mut Criterion) {
     let mut arena = Vec::new();
     Tokenizer::new(src).tokenize(&mut tokens).unwrap();
     c.bench_function("assignment", |b| {
-        let mut vars = VariableBank::new();
+        let mut vars = VariableValues::new();
         b.iter(|| {
             vars.clear();
             arena.clear();
             let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
-            let result = try_simple_assign(&arena, root, &mut vars).unwrap();
+            let result = try_assign(&arena, root, &mut vars).unwrap();
             black_box(result);
         });
     });
@@ -57,7 +57,7 @@ fn bench_pending_solve(c: &mut Criterion) {
     let src = "x+2=5";
     let mut tokens = Vec::new();
     let mut arena = Vec::new();
-    let vars = VariableBank::new();
+    let vars = VariableValues::new();
     Tokenizer::new(src).tokenize(&mut tokens).unwrap();
     let root = Parser::new(&tokens, src, &mut arena).parse().unwrap();
     c.bench_function("pending solve", |b| {

@@ -91,7 +91,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     }
 
     /// Sets the angle unit used when a trig argument has no `Deg`/`Rad` suffix.
-    pub fn with_angle(mut self, mode: AngleMode) -> Self {
+    pub fn set_angle(mut self, mode: AngleMode) -> Self {
         self.angle = mode;
         self
     }
@@ -172,7 +172,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     /// 1. The current token can't start an expression (e.g. an infix operator or `EndOfFile` in prefix position).
     /// 2. A number literal fails to parse.
     /// 3. A `log_` call's base is invalid.
-    #[inline(always)]
+    #[inline]
     fn nud(&mut self) -> Result<u32, String> {
         let token = self.consume();
         match token {
@@ -180,10 +180,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
                 let raw = &self.src[start as usize..end as usize];
                 let value = fast_float::parse::<f64, &str>(raw)
                     .map_err(|e| invalid_number_error(raw, &e))?;
-                if !value.is_finite() {
-                    return Err(number_out_of_range(raw));
-                }
-                if value == 0.0 && has_nonzero_mantissa(raw) {
+                if !value.is_finite() || (value == 0.0 && has_nonzero_mantissa(raw)) {
                     return Err(number_out_of_range(raw));
                 }
                 Ok(self.push_node(Node::Number(value)))
@@ -259,7 +256,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     /// This function does not perform bounds checking.
     /// The caller must ensure that `position` is less than the number of tokens.
     /// Otherwise, this function invokes undefined behavior.
-    #[inline(always)]
+    #[inline]
     fn consume(&mut self) -> Token {
         let token = unsafe { self.tokens.get_unchecked(self.position) }.clone();
         self.position += 1;
@@ -276,7 +273,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     /// # Errors
     /// - No text after `prefix` ("Expected {label} after {prefix}").
     /// - The subscript fails to tokenize or parse.
-    #[inline(always)]
+    #[inline]
     fn parse_subscript(
         &mut self,
         start: u32,
@@ -297,14 +294,14 @@ impl<'src, 'arena> Parser<'src, 'arena> {
         offset_tokens(&mut tokens, sub_start);
 
         Parser::new(&tokens, self.src, self.arena)
-            .with_angle(self.angle)
+            .set_angle(self.angle)
             .parse()
     }
 
     /// Stores a `Node` in the parser's `arena` and returns the index of the newly appended `Node`.
     ///
     /// Arena indices are `u32`; parsing an expression that produces more than `u32::MAX` nodes will silently wrap.
-    #[inline(always)]
+    #[inline]
     fn push_node(&mut self, node: Node) -> u32 {
         let index = self.arena.len() as u32;
         self.arena.push(node);
@@ -315,7 +312,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     ///
     /// # Errors
     /// Returns `Err` if the current token is not `Token::RightParenthesis`.
-    #[inline(always)]
+    #[inline]
     fn expect_right_parenthesis(&mut self) -> Result<(), String> {
         if !matches!(self.peek(), Token::RightParenthesis) {
             return Err(expected_right_parenthesis_error(self.peek()));
@@ -329,13 +326,13 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     /// # Safety
     /// This function doesn't perform bounds checking.
     /// The caller must ensure that `position` must be less than the number of tokens.
-    #[inline(always)]
+    #[inline]
     fn peek(&self) -> &Token {
         unsafe { self.tokens.get_unchecked(self.position) }
     }
 
     /// Skips to the next position.
-    #[inline(always)]
+    #[inline]
     fn advance(&mut self) {
         self.position += 1;
     }
@@ -355,7 +352,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
     /// - The right operand fails to parse.
     /// - `Token::LeftParenthesis` is not followed by a matching `)`.
     /// - The consumed token isn't a valid infix operator.
-    #[inline(always)]
+    #[inline]
     fn led(&mut self, left: u32) -> Result<u32, String> {
         let token = self.consume();
         match token {
@@ -422,7 +419,7 @@ impl<'src, 'arena> Parser<'src, 'arena> {
 ///
 /// Tokens with no span (operators, parentheses, `EndOfFile`, etc.) are
 /// left unchanged.
-#[inline(always)]
+#[inline]
 fn offset_tokens(tokens: &mut [Token], offset: u32) {
     for token in tokens {
         match token {
@@ -440,7 +437,7 @@ fn offset_tokens(tokens: &mut [Token], offset: u32) {
 /// The supplied `arg` is stored in the resulting `Node`.
 ///
 /// Returns `None` if the supplied `hash` doesn't match any of the supported functions' hash.
-#[inline(always)]
+#[inline]
 fn function_node(hash: u64, arg: u32) -> Option<Node> {
     Some(match hash {
         KW_SIN => Node::Sin(arg),
@@ -484,7 +481,7 @@ fn function_node(hash: u64, arg: u32) -> Option<Node> {
     })
 }
 
-#[inline(always)]
+#[inline]
 fn is_forward_trig(hash: u64) -> bool {
     matches!(hash, KW_SIN | KW_COS | KW_TAN | KW_SEC | KW_CSC | KW_COT)
 }
@@ -780,7 +777,7 @@ mod tests {
         let src = "sin(30)";
         Tokenizer::new(src).tokenize(&mut tokens).unwrap();
         let root = Parser::new(&tokens, src, &mut arena)
-            .with_angle(AngleMode::Radians)
+            .set_angle(AngleMode::Radians)
             .parse()
             .unwrap();
         let Node::Sin(a) = arena[root as usize] else {
