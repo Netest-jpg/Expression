@@ -24,7 +24,8 @@ impl VariableValues {
     ///
     /// If `hash` is already present, its value is overwritten in place. Otherwise a new entry is appended.
     ///
-    /// Returns `Err` if `VariableValues` has already reached `VARIABLE_LIMIT`.
+    /// # Errors
+    /// - If no. of entries in `VariableValues` exceeds `VARIABLE_LIMIT`.
     ///
     /// # Examples
     /// ```ignore
@@ -178,7 +179,7 @@ impl VariablePos {
         self.len == 0
     }
 
-    /// Returns `true` if the list is full — i.e. if a variable was dropped because `VARIABLE_LIMIT` was already reached when it was encountered.
+    /// Returns `true` if the list is full i.e., if a variable was dropped because `VARIABLE_LIMIT` was already reached when it was encountered.
     ///
     /// # Examples
     /// ```ignore

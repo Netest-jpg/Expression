@@ -173,7 +173,6 @@ fn main() {
             Node::Equation(_, _) => match try_assign(&arena, root, &mut vars) {
                 Err(e) => {
                     eprintln!("Error: {e}");
-                    writeln!(out).ok();
                 }
                 Ok(Some((start, end, value))) => {
                     let name = &expression[start as usize..end as usize];
@@ -217,8 +216,8 @@ fn main() {
                 }
                 Err(e) => match e {
                     EvaluationError::UnboundVariable => {
-                        if is_terminal && let Some(prev) = &pending {
-                            writeln!(out, "(Replacing pending: '{}')", prev.src).ok();
+                        if is_terminal && let Some(p) = &pending {
+                            writeln!(out, "(Replacing pending: '{}')", p.src).ok();
                         }
                         pending = Some(store_pending(
                             pending.take(),
@@ -231,6 +230,7 @@ fn main() {
                             let free = p.unbound_variables(&vars);
                             let plural = if free.len() == 1 { "" } else { "s" };
 
+                            writeln!(out, "(Replacing pending: '{}')", p.src).ok();
                             writeln!(out, "(Stored variable{plural}: {})", free.join(", ")).ok();
                             writeln!(out, "Assign value{plural} then type 'evaluate'").ok();
                         }

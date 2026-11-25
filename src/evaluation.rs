@@ -212,21 +212,22 @@ pub(crate) fn factorial(x: f64) -> Option<f64> {
     Some(acc)
 }
 
-/// Attempts to interpret the expression at `root` as a simple variable assignment of the
-/// form `name = expr`. If it matches, `expr` is evaluated and the result is stored in `vars`.
+/// Tries to interpret the expression at `root` to assign value to a variable .
+///
+/// If `root` is `Node::Equation` whose left-hand side is a bare variable, it's right-hand side is
+/// evaluated and store in `vars`.
 ///
 /// Returns:
-/// - `Ok(Some((start, end, value)))` — `root` is an `Equation` with a bare `Variable` on its
-///   left-hand side. `start`/`end` are the byte offsets of the variable's name in the source,
-///   and `value` is the newly assigned value.
+/// - `Ok(Some((start, end, value)))` : Successful assignment of value.
 ///
-/// - `Ok(None)` — `root` is not an `Equation`, or its left-hand side is not a bare variable
-///   (e.g. `x + 1 = 5` or `2 = 5`). This is not an error; the caller should fall back to
-///   [`evaluate_pending`] for verification or solving.
+///  `start` & `end` are the byte offsets of variable in the source text.
+///  `value` is the assigned value.
+///
+/// - `Ok(None)` — Unsuccessful assignment of value
 ///
 /// # Errors
 /// - The right-hand side fails to evaluate (e.g. an unbound variable).
-/// - `vars` is full and the variable is new (see [`VariableValues::set`]).
+/// - `VARIABLE_LIMIT` is exceeded.
 pub fn try_assign(
     arena: &[Node],
     root: u32,
